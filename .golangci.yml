@@ -1,0 +1,22 @@
+version: "2"
+
+run:
+  timeout: 3m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck
+    - ineffassign
+    - misspell
+    - copyloopvar
+    - errorlint
+    - unconvert
+    - govet
+    - staticcheck
+    - unused
+
+formatters:
+  enable:
+    - gofmt

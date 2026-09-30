@@ -1,0 +1,33 @@
+# Development instructions
+
+## Scope and status
+
+This repository is the standalone XOps MCP server product. Read `docs/architecture.md` and `docs/roadmap.md` before implementation. The current bootstrap contains compatibility tests, not a runnable server.
+
+## Dependency ownership
+
+- Keep the dependency one-way: `xops-mcp` imports pinned public packages from `xops-cli`. Never introduce the reverse dependency.
+- Shared SSH/SFTP/MCP behavior belongs to the upstream packages. Do not copy or fork their implementations here.
+- Keep database models, Web APIs, migrations, and concrete server adapters in this repository.
+- Do not import upstream command/TUI packages or directly import upstream `internal` packages.
+- Do not commit local `replace` directives, `go.work`, or unversioned dependencies. Run release checks with `GOWORK=off`.
+- Planned interfaces must be documented as planned until implemented and tested.
+
+## Coding and lifecycle
+
+- Go 1.26+; preserve Go initialisms such as ID, URL, SSH, CLI, SFTP, and TCP.
+- Every connection, file, response body, and runtime has a deterministic close path. Use deferred cleanup and handle close errors.
+- Every goroutine has a documented cancellation path and bounded completion. Pass context and enforce network/database deadlines.
+- Wrap errors with context; do not swallow errors, panic, or append punctuation/newlines to error messages.
+- Protect shared state with appropriate synchronization and avoid holding locks over network I/O.
+- Keep credentials out of DTOs and logs. Use deployment-owned synthetic fixtures in tests, never personal configuration or credentials.
+
+## Tests, documentation, and Git
+
+- Add tests for every new capability, core behavior, or bug fix. Prefer contract and lifecycle behavior over tests that mirror implementation.
+- Before every code push or PR, pass `go build ./...`, `go test ./...`, and `golangci-lint run ./...` locally.
+- Use golangci-lint v2; run `golangci-lint config verify` after changing its configuration.
+- Run relevant race/lifecycle tests. Distinguish protocol discovery from real SSH/SFTP validation.
+- Update corresponding Chinese and English documentation when changing described behavior.
+- Use conventional commits: `feat:`, `fix:`, `chore:`, `ci:`, `docs:`, or `test:`.
+- Do not infer authorization to modify or publish the upstream repository from work requested here.
