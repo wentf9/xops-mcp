@@ -1,4 +1,4 @@
-package legacycompat_test
+package dependencycheck_test
 
 import (
 	"context"
@@ -42,13 +42,35 @@ func TestUpstreamUsesPublishedModuleVersion(t *testing.T) {
 	}
 }
 
+func TestCoreConsumerDependencies(t *testing.T) {
+	const upstream = "github.com/wentf9/xops-cli"
+	for _, target := range []string{"linux", "windows", "darwin"} {
+		t.Run(target, func(t *testing.T) {
+			output := goListTarget(t, target, "-deps", "-test", "./internal/coreconsumer/...")
+			for dependency := range strings.FieldsSeq(string(output)) {
+				if dependency == upstream || (strings.HasPrefix(dependency, upstream+"/") && !strings.HasPrefix(dependency, upstream+"/core/")) {
+					t.Errorf("application package entered the core consumer graph: %s", dependency)
+				}
+			}
+		})
+	}
+}
+
 func goList(t *testing.T, args ...string) []byte {
+	t.Helper()
+	return goListTarget(t, "", args...)
+}
+
+func goListTarget(t *testing.T, target string, args ...string) []byte {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, "go", append([]string{"list"}, args...)...)
 	command.Dir = "../.."
 	command.Env = append(os.Environ(), "GOWORK=off")
+	if target != "" {
+		command.Env = append(command.Env, "GOOS="+target, "GOARCH=amd64", "CGO_ENABLED=0")
+	}
 	command.WaitDelay = time.Second
 	output, err := command.CombinedOutput()
 	if err != nil {

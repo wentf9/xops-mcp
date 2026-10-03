@@ -1,6 +1,6 @@
 # Shared interfaces and server integration
 
-Status: D1/D2 have migrated; D3 now provides shared guardrails, task state machines, ports, and sshexec adapters. Runtime composition has migrated to core; dynamic publication/admission is implemented; persisted task binding and retained-transport commits are implemented. Local core consumer probes pass; the remote pin upgrade awaits publication. The module pin and current probes remain at the bootstrap version.
+Status: upstream D1–D5 and D6 independent extraction are implemented. This repository pins a remotely downloadable core commit that passed acceptance without replacements. Core tests have moved from testdata to internal/coreconsumer and run in normal CI alongside separate legacy contracts. See the [dependency baseline](../reuse-baseline.md) for the exact pin and PR links. Database, Web and product entry points remain later work.
 
 The authoritative shared-source design is `docs/en/development/shared-core-decoupling.md` in [xops-cli](https://github.com/wentf9/xops-cli). This document defines consumer obligations. Database injection alone does not establish an independently maintainable shared core.
 
@@ -13,13 +13,13 @@ xops-mcp services/storage
        -> shared core/mcp/sshexec, core/ssh, sftp, auth, log
 ```
 
-Upstream auth, log, concurrent, ssh, sftp, and MCP policy/guardrail/transfer/tunnel/remotefile/ports/sshexec packages now exist; runtime composition has also migrated. The consumer does not depend on unpublished code. Upstream consolidates a self-contained core subtree in the existing module. Old public packages become compatibility facades over one implementation. No nested module or third repository is created at this stage.
+Upstream auth, log, concurrent, ssh, sftp, and MCP policy/guardrail/transfer/tunnel/remotefile/ports/sshexec packages now exist; runtime composition has also migrated. The consumer imports core through a fixed remote version. Upstream consolidates a self-contained core subtree in the existing module. Old public packages become compatibility facades over one implementation. No nested module or third repository is created at this stage.
 
 The server production graph must eventually exclude CLI configuration/models/adapters, vault backends, i18n, TUI, and root terminal internals. Future externalization changes dependency paths in adapters/composition without redesigning server business services.
 
 ## 2. Four dependency roles
 
-| Proposed port | Server implementation | Constraint |
+| Public port | Server implementation | Constraint |
 | --- | --- | --- |
 | StateSource.List/Resolve | Published inventory, complete destination/jump plans, policy | Context-bound coherent values, no entities/plaintext secrets |
 | ExecutionGate.Enter | Same version coordinator as updates | Final recheck and registration; equal nonempty DomainID with StateSource |
@@ -98,20 +98,20 @@ Use explicit synchronization barriers, not sleeps or timeout inflation. Report r
 1. Upstream D1/D2: neutral leaves and SSH/SFTP boundaries; add independent core probes.
 2. D3: shared MCP runtime and legacy facade; compare schemas, results, and shutdown.
 3. D4/D5: dynamic admission/generations and deferred binding; validate using an in-memory source before requiring a database.
-4. D6: isolated extraction gate; switch production imports to core.
-5. Upgrade go.mod/go.sum only to a remotely available fixed version, run consumer gates, then implement SQLite and Web features.
+4. D6: isolated extraction passes and consumer tests use public core entry points.
+5. Validate a remotely downloadable fixed version without replacements, update go.mod/go.sum and run root gates before starting SQLite and Web product work.
 
-Separate core-consumer and legacy probes so old config fixtures do not contaminate production/core dependency checks. Core probes are staged under testdata/core-consumer until the published dependency contains core. Legacy probes remain under internal/legacycompat; production code is not yet present.
+Separate internal/coreconsumer and internal/legacycompat so old configuration fixtures cannot contaminate core dependency checks. internal/dependencycheck verifies three-platform core graphs, the aggregate CLI/TUI boundary and the remote module pin. Future production entry points require their own graph checks; production code is not yet present.
 
 See the [roadmap](roadmap.md) and [architecture](architecture.md).
 
 
 ## Reproducible consumer checks
 
-The root module continues to validate the existing published pin with `GOWORK=off go build ./...`, `GOWORK=off go test ./...` and `golangci-lint run ./...`. Its legacy probe does not establish the new core boundary.
+The root module validates core and legacy contracts against the same fixed remote pin with `GOWORK=off go build ./...`, `GOWORK=off go test ./...` and `golangci-lint run ./...`. Legacy probes do not replace the independent core dependency check.
 
-`python3 scripts/check_core_consumer.py --upstream /path/to/xops-cli` copies the core-only probes into a disposable module and temporarily replaces upstream there. It verifies Linux/Windows/macOS import graphs, Linux race tests, lint, real HTTP/SSH commands, binary SFTP roundtrips and dynamic node disablement. No replacement, workspace or rewritten pin enters either repository. `testdata` keeps unpublished imports out of normal package discovery and module tidy.
+`python3 scripts/check_core_consumer.py --upstream /path/to/xops-cli` copies internal/coreconsumer into a disposable module and temporarily replaces upstream there. It verifies Linux/Windows/macOS import graphs, race tests on the current platform, lint, real HTTP/SSH commands, binary SFTP roundtrips and dynamic node disablement. No replacement, workspace or rewritten pin enters either repository. Normal Go discovery and CI now include the core tests.
 
-After upstream publication, run `python3 scripts/check_core_consumer.py --version EXACT_VERSION` for the same checks against the downloadable pin without replacement. Then move the core probe into a normal test package, update root go.mod/go.sum, and run root gates. The local preview passed; remote core-pin acceptance is pending.
+Before upgrading, run `python3 scripts/check_core_consumer.py --version EXACT_VERSION` against the downloadable pin without replacement, update root go.mod/go.sum and run root gates. The current fixed version passed this acceptance; the dependency baseline records its exact commit and validation scope.
 
 TransferSession now supports ReserveCommit(ctx, permit): streaming and commit share the retained transport while using separately admitted phases. v2 journals carry secret-free original authorization and losslessly encoded credential versions. Claim, credential reissue and recovery validate that binding. Old v1 records retain status and unknown locks but cannot acquire remote authority. Database adapters must persist domain IDs and dependency versions across restart; SQL storage and Web implementation remain later milestones.

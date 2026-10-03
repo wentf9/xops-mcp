@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the future core consumer in a disposable module, never changing pins."""
+"""Validate the core consumer in a disposable module, never changing pins."""
 
 import argparse
 import json
@@ -37,7 +37,7 @@ def main():
         work = Path(directory)
         for name in ("go.mod", "go.sum", ".golangci.yml"):
             shutil.copy2(root / name, work / name)
-        for path in (root / "testdata/core-consumer").glob("*.go"):
+        for path in (root / "internal/coreconsumer").glob("*.go"):
             shutil.copy2(path, work / path.name)
         if args.upstream:
             run(work, "go", "mod", "edit", f"-replace={UPSTREAM}={args.upstream}")

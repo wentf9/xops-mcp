@@ -4,7 +4,7 @@
 
 面向自托管部署的 MCP 运维服务端，计划通过 Web 控制台管理节点，使用 SQLite 或 PostgreSQL 保存业务数据，复用 [xops-cli](https://github.com/wentf9/xops-cli) 的 SSH、SFTP 和 MCP 能力。
 
-**当前阶段：仓库初始化与架构规划。** 已包含固定版本依赖、跨仓库兼容性测试和 CI；尚未提供可启动的服务端程序、Web 控制台或数据库实现。
+**当前阶段：公共核心接入与消费者验证。** 已固定可从远端下载的共享 core 版本，常规 CI 覆盖 core 消费与旧入口兼容性；尚未提供可启动的服务端程序、Web 控制台或数据库实现。
 
 ## 两个仓库的关系
 
@@ -14,7 +14,7 @@ xops-mcp（独立发布的服务端产品）
                      │ 固定 Go module 版本
                      ▼
 xops-cli（CLI 产品与现阶段共享内核的源码仓库）
-  pkg/mcpserver / pkg/ssh / pkg/sftp
+  core/mcp/runtime / core/ssh / core/sftp
                      ▲
                      │ 同仓库复用
   CLI / TUI / xops mcp
@@ -24,7 +24,7 @@ xops-cli（CLI 产品与现阶段共享内核的源码仓库）
 - MCP 工具、护栏、传输状态机和 SSH/SFTP 修复只维护一份共享实现。
 - Web、管理 API、数据库模型、迁移及服务端凭据适配器归 `xops-mcp` 所有。
 - 暂不创建第三个共享仓库；共享包的位置和版本策略见架构文档。
-- 公共代码计划在上游收敛到可独立抽取的 `core/` 子树，旧 `pkg/*` 路径保留为兼容入口；上游本地迁移及独立抽取已通过验证，当前发布 pin 尚未升级。
+- 公共实现已收敛到上游可独立抽取的 `core/` 子树，旧 `pkg/*` 保留兼容入口；本仓库直接验证 core，并使用固定远端提交而非本地替换。
 - 初期按单实例设计：SQLite 为默认存储，PostgreSQL 为后续外部数据库选项。
 
 ## 设计与实施
@@ -37,21 +37,20 @@ xops-cli（CLI 产品与现阶段共享内核的源码仓库）
 
 ## 验证当前骨架
 
-要求 Go 1.26+、golangci-lint v2。测试使用临时本地 HTTP 服务和合成节点，不连接真实 SSH 服务器，也不加载个人 XOps/OpenSSH 配置。
+要求 Go 1.26+、golangci-lint v2。测试使用临时本地 HTTP 与 SSH/SFTP fixture、合成节点和凭据，不读取个人 XOps/OpenSSH 配置，也不连接部署环境中的主机。
 
 ```sh
-go build ./...
-go test ./...
+GOWORK=off go build ./...
+GOWORK=off go test ./...
 golangci-lint config verify
 golangci-lint run ./...
 go test -race -timeout=120s ./...
 ```
 
-`go build ./...` 目前仅验证兼容性包，不生成服务端二进制。协议测试覆盖外部模块装配、HTTP 鉴权、MCP 握手、工具发现、节点查询和资源关闭；它不代表数据库、动态节点修改或实际 SSH/SFTP 传输已经实现或验证。
+`go build ./...` 目前验证消费者与兼容性包，不生成服务端二进制。测试覆盖 HTTP 鉴权、MCP 握手与工具集合、SSH 命令、二进制 SFTP 上传/下载、内存协调器动态禁用及资源回收。`internal/dependencycheck` 单独检查 core 消费图的 Linux/Windows/macOS 导入边界；这些图检查不是原生平台运行证据。数据库/Web 尚未实现。
+
+固定版本的独立消费者验收：`python3 scripts/check_core_consumer.py --version v0.13.1-0.20261003013451-91671a7cf029`。本地联调仍可使用 `--upstream /path/to/xops-cli`，替换仅写入临时 module。详见[接口接入状态](docs/interface-decoupling.md)。
 
 ## 许可证
 
 [MIT](LICENSE)，与上游项目保持一致。
-
-
-新 core 接口另有隔离消费探针：`python3 scripts/check_core_consumer.py --upstream /path/to/xops-cli`。本地预览覆盖实际 SSH/SFTP、动态准入和关闭；它使用临时 module，不能替代发布后的 `--version EXACT_VERSION` 验收。详见[接口接入状态](docs/interface-decoupling.md)。

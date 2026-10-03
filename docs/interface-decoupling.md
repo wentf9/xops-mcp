@@ -1,6 +1,6 @@
 # 公共接口解耦与服务端接入
 
-状态：上游 D1/D2 已迁移，D3 已建立公共护栏、任务状态机、ports 和 sshexec 适配器。MCP 运行时已迁入 core 并接入公共接口；动态发布/准入协调器已实现；持久任务绑定和原连接提交已实现；本地 core 消费探针通过，远端 pin 升级等待上游发布。当前 `go.mod` 和兼容探针仍使用初始化时固定的上游版本。
+状态：上游 D1–D5 公共实现和 D6 独立抽取已完成，本仓库已固定到可从远端下载的 core 提交并通过无 replace 验收。core 消费测试已从 testdata 迁入 internal/coreconsumer，常规 CI 同时运行它与独立 legacy 契约。精确版本及 PR 状态入口见[依赖基线](reuse-baseline.md)；数据库、Web 和产品入口仍属后续阶段。
 
 公共源码的主设计位于 [xops-cli](https://github.com/wentf9/xops-cli) 的 `docs/development/shared-core-decoupling.md`；本文件约定新服务如何消费该设计。规划同时覆盖 CLI 公共代码的可抽取性和服务端接口接入，不把数据库支持作为解耦完成的唯一判断。
 
@@ -18,13 +18,13 @@ github.com/wentf9/xops-cli/core/mcp/sshexec
 github.com/wentf9/xops-cli/core/ssh、sftp、auth、log
 ```
 
-上游已建立 auth、log、concurrent、ssh、sftp，以及 mcp 下的 policy、guardrail、transfer、tunnel、remotefile、ports、sshexec；runtime 装配入口已迁移，新服务当前仍未依赖未发布的代码。上游在原仓库中建立自包含 core 子树，不新增嵌套 module，也不立即创建第三个仓库。旧 `pkg/*` 入口保留为兼容外观，核心只维护一份实现。
+上游已建立 auth、log、concurrent、ssh、sftp，以及 mcp 下的 policy、guardrail、transfer、tunnel、remotefile、ports、sshexec；runtime 装配入口已迁移，消费者通过固定远端版本直接导入 core。上游在原仓库中建立自包含 core 子树，不新增嵌套 module，也不立即创建第三个仓库。旧 `pkg/*` 入口保留为兼容外观，核心只维护一份实现。
 
 新服务最终不直接或间接编译 CLI config/models/adapter、vault backend、i18n、TUI、根 internal/terminal。后续抽出独立公共仓库时，服务业务层保持不变，依赖路径调整集中在 adapter 和装配入口。
 
 ## 2. 服务端实现四类依赖
 
-| 拟定接口 | 服务端实现 | 关键约束 |
+| 公共接口 | 服务端实现 | 关键约束 |
 | --- | --- | --- |
 | `StateSource.List/Resolve` | 从同一已发布版本取得展示数据、完整目标/跳板计划及策略 | 带 context；不返回数据库实体或明文机密；多节点一次解析 |
 | `ExecutionGate.Enter` | 与节点更新发布共享版本协调器 | 最后校验并登记；和 StateSource 使用同一非空 DomainID |
@@ -103,20 +103,20 @@ Web 校验和版本前置条件
 1. 上游 D1/D2：公共叶子层及 SSH/SFTP 边界；新仓库增加 core 接口探针。
 2. 上游 D3：公共 MCP runtime 与兼容 facade；比较新旧入口工具 schema、结果和关闭行为。
 3. 上游 D4/D5：动态准入/连接代际及异步任务绑定；消费者用内存版本源验证行为，尚不要求数据库已实现。
-4. 上游 D6：core 子树独立 module 抽取检查通过，新服务切换生产导入路径。
-5. 取得远端可获取的固定 module 版本后升级 go.mod/go.sum，运行消费者 gates，再进入 SQLite 与 Web 实施。
+4. 上游 D6：core 子树独立 module 抽取检查通过，本仓库 core 消费测试切换到公共入口。
+5. 固定远端可获取的 module 版本，完成无替换消费者验收并升级 go.mod/go.sum；产品开发随后进入 SQLite 与 Web 阶段。
 
-探针分成 core 消费测试和 legacy 兼容测试，避免旧测试的 config import 导致整个模块的聚合图误判。独立生产入口和 core 探针必须分别检查边界。core 探针暂放 testdata/core-consumer，旧探针位于 internal/legacycompat；当前仍无产品入口，依赖 pin 尚未升级。
+探针分成 internal/coreconsumer 与 internal/legacycompat，避免旧测试的 config import 导致聚合图误判。internal/dependencycheck 分别验证 core 的三平台图、整体 CLI/TUI 边界与远端版本。未来生产入口仍须单独检查；当前没有产品入口。
 
 详细阶段与产品范围见[路线图](roadmap.md)，跨仓库职责见[架构](architecture.md)。
 
 
 ## 可复现的消费者验证
 
-根 module 继续通过 `GOWORK=off go build ./...`、`GOWORK=off go test ./...` 和 `golangci-lint run ./...` 验证已发布的旧 pin。旧探针不能代表新的 core 边界。
+根 module 通过 `GOWORK=off go build ./...`、`GOWORK=off go test ./...` 和 `golangci-lint run ./...` 验证同一个固定远端 pin 的 core 与旧入口契约。旧入口探针不能代替 core 的独立依赖边界检查。
 
-`python3 scripts/check_core_consumer.py --upstream /path/to/xops-cli` 把仅导入 core 的探针复制到临时 module，再在那里设置临时替换。它检查 Linux/Windows/macOS 导入图、Linux race、lint，以及真实 HTTP/SSH 命令、二进制 SFTP 往返和动态禁用。两个仓库都不写入 replace、workspace 或改动后的 pin。testdata 布局避免未发布接口进入普通包发现和 go mod tidy。
+`python3 scripts/check_core_consumer.py --upstream /path/to/xops-cli` 从 internal/coreconsumer 复制探针到临时 module，再在那里设置临时替换。它检查 Linux/Windows/macOS 导入图、当前平台 race、lint，以及真实 HTTP/SSH 命令、二进制 SFTP 往返和动态禁用。两个仓库都不写入 replace、workspace 或改动后的 pin。常规 Go 包发现和 CI 已包含 core 消费测试。
 
-上游发布后运行 `python3 scripts/check_core_consumer.py --version EXACT_VERSION`，以可下载 pin 做同样的无 replace 验收；随后把 core 探针移到普通测试包，更新根 go.mod/go.sum 并运行完整 gates。本地预览已通过，远端 core pin 验收待发布。
+升级依赖前运行 `python3 scripts/check_core_consumer.py --version EXACT_VERSION`，以可下载 pin 做无 replace 验收，随后更新根 go.mod/go.sum 并运行完整 gates。当前固定版本已通过此验收；版本、提交与校验范围见依赖基线。
 
 TransferSession 新增 ReserveCommit(ctx, permit)，使流式传输和提交保留原 transport、分别使用准入许可。v2 journal 保存无秘密的原始授权和无损编码的凭据版本；claim、重新发放凭证和恢复均校验原绑定。旧 v1 保留状态与 unknown 锁，但不能获得远程权限。数据库适配器必须跨重启持久化域与依赖版本；SQL 存储和 Web 仍属于后续产品阶段。
