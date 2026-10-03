@@ -1,6 +1,8 @@
 # Roadmap and acceptance criteria
 
-Only the M0 bootstrap exists. Later milestones describe planned work and dependency order, not delivery dates.
+The shared core is integrated through a fixed remote version. Normal CI covers core consumers, legacy facades and dependency boundaries. Database/Web product features remain later milestones; see the [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md).
+
+M0 bootstrap and M1 consumer integration are implemented. The upstream change is pinned to a pushed commit; PR merge status is tracked separately. M2–M4 describe planned product work and dependency order, not delivery dates.
 
 ## M0: repository and verifiable reuse baseline
 
@@ -14,15 +16,17 @@ Owner: `xops-mcp`.
 
 Evidence: [dependency baseline](../reuse-baseline.md). This phase provides no server executable.
 
-## M1: server-facing shared-core interfaces
+## M1: server-facing shared-core interfaces (integrated)
 
 Owners: upstream public-package changes in `xops-cli`; external-consumer checks in `xops-mcp`.
 
+See [interface decoupling](interface-decoupling.md). Upstream delivers D1 neutral leaves, D2 SSH/SFTP, D3 MCP runtime, D4 dynamic admission, D5 persisted tasks, and D6 consumer/extraction acceptance. Move the implementation into core and retain old-package facades without creating a separate repository yet.
+
 Add execution-service and policy/audit injection with explicit ownership; operation snapshots and version-bound credentials; pre-execution revocation checks; connection generations/invalidation covering shared identities and multi-hop jumps; and explicit server host-trust/private-key integration. Preserve CLI behavior, transport tool sets, and transfer state semantics.
 
-Acceptance: upstream gates and consumer contracts; regressions for editing during execution, rotating credentials after approval, disabling/deleting nodes, and shared identity/jump changes; cancellation, deadlines, idempotent Close, and goroutine cleanup. Publish a fixed upstream version before upgrading the server.
+Acceptance: upstream gates and consumer contracts; regressions for editing during execution, rotating credentials after approval, disabling/deleting nodes, and shared identity/jump changes; cancellation, deadlines, idempotent Close, and goroutine cleanup; dependency graphs for Linux/Windows/macOS; and isolated module build/tests using only the core subtree without original-module dependencies or replacements. Publish a fixed upstream version before upgrading the server.
 
-Frozen snapshots may support prototypes before M1, but must not be represented as live Web inventory support.
+The consumer now validates dynamic disablement with an in-memory coordinator, real SSH/SFTP and cleanup against the fixed remote version. Database transactions, Web editing and server credential adapters remain M2/M3 work.
 
 ## M2: SQLite and a runnable standalone MCP server
 
