@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/wentf9/xops-cli v0.13.1-0.20261003013451-91671a7cf029
+	github.com/wentf9/xops-cli v0.13.1-0.20261003020948-b8ee0ed9f1a0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.57.0
 )

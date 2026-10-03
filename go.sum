@@ -64,8 +64,8 @@ github.com/segmentio/encoding v0.5.4 h1:OW1VRern8Nw6ITAtwSZ7Idrl3MXCFwXHPgqESYfv
 github.com/segmentio/encoding v0.5.4/go.mod h1:HS1ZKa3kSN32ZHVZ7ZLPLXWvOVIiZtyJnO1gPH1sKt0=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/wentf9/xops-cli v0.13.1-0.20261003013451-91671a7cf029 h1:avOAlCg7pCTqj1KVBw863g+j5GHqJPfpKGrKmfBLMQE=
-github.com/wentf9/xops-cli v0.13.1-0.20261003013451-91671a7cf029/go.mod h1:2DmRRviLBXfCK91dsSFgRlVfO0b1YNOmiBzLVPSUc+8=
+github.com/wentf9/xops-cli v0.13.1-0.20261003020948-b8ee0ed9f1a0 h1:uINtNUDJzV3EQY4EmUaKI3IY6SQctwE8l8RNSOCIClc=
+github.com/wentf9/xops-cli v0.13.1-0.20261003020948-b8ee0ed9f1a0/go.mod h1:2DmRRviLBXfCK91dsSFgRlVfO0b1YNOmiBzLVPSUc+8=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
 github.com/yosida95/uritemplate/v3 v3.0.2 h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=
