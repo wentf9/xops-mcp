@@ -8,9 +8,9 @@
 - Upstream change: [xops-cli PR #75](https://github.com/wentf9/xops-cli/pull/75). The pin identifies a remotely downloadable commit, not a release tag or a claim that the PR has merged.
 - Go minimum: `1.26.0`; MCP SDK: `v1.8.0`.
 - Checks use `GOWORK=off` and the downloaded module without local replacement.
-- Bootstrap baseline: `v0.13.1-0.20260930042335-73892b0791e3`. The legacy tests now validate compatibility at the current core pin.
+- Bootstrap baseline: `v0.13.1-0.20260930042335-73892b0791e3`. Retained as historical source information; current consumer tests use only core.
 
-当前版本通过远端下载接入公共 core；两个仓库仍为单向依赖，没有新增共享仓库、嵌套 module 或已提交的 replace/workspace。
+当前版本通过远端下载接入公共 core；两个仓库仍为单向依赖，没有新增共享仓库、嵌套 module 或已提交的 replace/workspace。CLI 兼容层清理未改变 core API，因此本仓库继续使用上述远端 pin；相邻 checkout 的本地验证不代表新上游版本已经发布。
 
 ## Public boundaries / 公共边界
 
@@ -20,7 +20,6 @@
 | State, admission, execution and audit ports | [core/mcp/ports/types.go](https://github.com/wentf9/xops-cli/blob/b8ee0ed9f1a0a2f1ce3ee3bf6196299c8e9ded80/core/mcp/ports/types.go) |
 | Publication coordinator | [core/mcp/state](https://github.com/wentf9/xops-cli/tree/b8ee0ed9f1a0a2f1ce3ee3bf6196299c8e9ded80/core/mcp/state) |
 | Captured SSH plans and leases | [core/ssh/plan.go](https://github.com/wentf9/xops-cli/blob/b8ee0ed9f1a0a2f1ce3ee3bf6196299c8e9ded80/core/ssh/plan.go) |
-| Legacy CLI facade | [pkg/mcpserver/compat.go](https://github.com/wentf9/xops-cli/blob/b8ee0ed9f1a0a2f1ce3ee3bf6196299c8e9ded80/pkg/mcpserver/compat.go) |
 
 ## Consumer checks / 消费者验证
 
@@ -29,10 +28,9 @@ All contracts below run through normal `go test ./...` and CI. Tests use exporte
 | Package | Evidence |
 | --- | --- |
 | `internal/coreconsumer` | Shared runtime HTTP authentication, MCP initialization and tool sets, inventory, real SSH command execution, binary SFTP upload/download, dynamic node disablement and cleanup |
-| `internal/legacycompat` | Existing facade construction and HTTP discovery/inventory contracts; independent SSH provider errors and connector shutdown |
-| `internal/dependencycheck` | Exact version with no replacement; no CLI/TUI presentation packages in the aggregate graph; core-only upstream imports in Linux/Windows/macOS consumer graphs |
+| `internal/dependencycheck` | Exact version with no replacement; core-only upstream imports in every production/test graph on Linux/Windows/macOS, including exclusion of CLI/TUI presentation packages |
 
-`coreconsumer` and `legacycompat` both use goleak. CI runs all tests with `-race`. Boundary checks inspect only the core package when excluding legacy configuration/credential adapters; compatibility fixtures do not weaken the production/core requirement.
+`coreconsumer` uses goleak. CI runs all tests with `-race`. Boundary checks cover the entire module, including tests; there is no exception for CLI configuration or credential adapters. The old `internal/legacycompat` probe has been removed.
 
 ## Remote-version acceptance / 远端版本验收
 

@@ -1,6 +1,6 @@
 # Roadmap and acceptance criteria
 
-The shared core is integrated through a fixed remote version. Normal CI covers core consumers, legacy facades and dependency boundaries. Database/Web product features remain later milestones; see the [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md).
+The shared core is integrated through a fixed remote version. Normal CI covers core consumers and dependency boundaries. Database/Web product features remain later milestones; see the [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md).
 
 M0 bootstrap and M1 consumer integration are implemented. The upstream change is pinned to a pushed commit; PR merge status is tracked separately. M2–M4 describe planned product work and dependency order, not delivery dates.
 
@@ -20,7 +20,7 @@ Evidence: [dependency baseline](../reuse-baseline.md). This phase provides no se
 
 Owners: upstream public-package changes in `xops-cli`; external-consumer checks in `xops-mcp`.
 
-See [interface decoupling](interface-decoupling.md). Upstream delivers D1 neutral leaves, D2 SSH/SFTP, D3 MCP runtime, D4 dynamic admission, D5 persisted tasks, and D6 consumer/extraction acceptance. Move the implementation into core and retain old-package facades without creating a separate repository yet.
+See [interface decoupling](interface-decoupling.md). Upstream delivers D1 neutral leaves, D2 SSH/SFTP, D3 MCP runtime, D4 dynamic admission, D5 persisted tasks, and D6 consumer/extraction acceptance. The implementation lives in core and CLI adapters consume it directly; old Go API facades are removed without creating a separate repository.
 
 Add execution-service and policy/audit injection with explicit ownership; operation snapshots and version-bound credentials; pre-execution revocation checks; connection generations/invalidation covering shared identities and multi-hop jumps; and explicit server host-trust/private-key integration. Preserve CLI behavior, transport tool sets, and transfer state semantics.
 

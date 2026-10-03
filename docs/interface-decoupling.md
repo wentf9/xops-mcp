@@ -1,6 +1,6 @@
 # 公共接口解耦与服务端接入
 
-状态：上游 D1–D5 公共实现和 D6 独立抽取已完成，本仓库已固定到可从远端下载的 core 提交并通过无 replace 验收。core 消费测试已从 testdata 迁入 internal/coreconsumer，常规 CI 同时运行它与独立 legacy 契约。精确版本及 PR 状态入口见[依赖基线](reuse-baseline.md)；数据库、Web 和产品入口仍属后续阶段。
+状态：上游 D1–D5 公共实现和 D6 独立抽取已完成，本仓库已固定到可从远端下载的 core 提交并通过无 replace 验收。core 消费测试已从 testdata 迁入 internal/coreconsumer，常规 CI 运行 core 契约及全量依赖边界检查。精确版本及 PR 状态入口见[依赖基线](reuse-baseline.md)；数据库、Web 和产品入口仍属后续阶段。
 
 公共源码的主设计位于 [xops-cli](https://github.com/wentf9/xops-cli) 的 `docs/development/shared-core-decoupling.md`；本文件约定新服务如何消费该设计。规划同时覆盖 CLI 公共代码的可抽取性和服务端接口接入，不把数据库支持作为解耦完成的唯一判断。
 
@@ -18,7 +18,7 @@ github.com/wentf9/xops-cli/core/mcp/sshexec
 github.com/wentf9/xops-cli/core/ssh、sftp、auth、log
 ```
 
-上游已建立 auth、log、concurrent、ssh、sftp，以及 mcp 下的 policy、guardrail、transfer、tunnel、remotefile、ports、sshexec；runtime 装配入口已迁移，消费者通过固定远端版本直接导入 core。上游在原仓库中建立自包含 core 子树，不新增嵌套 module，也不立即创建第三个仓库。旧 `pkg/*` 入口保留为兼容外观，核心只维护一份实现。
+上游已建立 auth、log、concurrent、ssh、sftp，以及 mcp 下的 policy、guardrail、transfer、tunnel、remotefile、ports、sshexec；runtime 装配入口已迁移，消费者通过固定远端版本直接导入 core。上游在原仓库中建立自包含 core 子树，不新增嵌套 module，也不立即创建第三个仓库。CLI 直接使用 core，旧 Go API 兼容外观已移除，核心只维护一份实现。
 
 新服务最终不直接或间接编译 CLI config/models/adapter、vault backend、i18n、TUI、根 internal/terminal。后续抽出独立公共仓库时，服务业务层保持不变，依赖路径调整集中在 adapter 和装配入口。
 
@@ -41,7 +41,7 @@ github.com/wentf9/xops-cli/core/ssh、sftp、auth、log
 - 实现 KeySource：解密并解析数据库私钥，返回 Signer/Close 租约；不把私钥写入个人路径，不将私钥路径暴露给 MCP 列表或 Web DTO。
 - 实现 HostKeyVerifier：校验规范 endpoint、信任版本和服务端 public key。Web 确认主机密钥是独立管理操作，不让后台 MCP 弹出终端提示。
 - 日志显式注入；公共 Nop 不初始化 CLI 颜色或标准流。MCP 新服务不提供本地交互 InputBridge。
-- 旧 CLI 的默认环境发现与 Windows 输入行为由上游兼容适配器保留；服务端无需携带其实现。
+- CLI 默认环境发现与 Windows 输入行为由上游 internal/sshenv 和应用适配器负责；服务端无需携带其实现。
 
 ## 4. 动态更新流程
 
@@ -101,19 +101,19 @@ Web 校验和版本前置条件
 ## 8. 升级顺序
 
 1. 上游 D1/D2：公共叶子层及 SSH/SFTP 边界；新仓库增加 core 接口探针。
-2. 上游 D3：公共 MCP runtime 与兼容 facade；比较新旧入口工具 schema、结果和关闭行为。
+2. 上游 D3：公共 MCP runtime 与 CLI 宿主装配；保留工具 schema、结果和关闭行为。
 3. 上游 D4/D5：动态准入/连接代际及异步任务绑定；消费者用内存版本源验证行为，尚不要求数据库已实现。
 4. 上游 D6：core 子树独立 module 抽取检查通过，本仓库 core 消费测试切换到公共入口。
 5. 固定远端可获取的 module 版本，完成无替换消费者验收并升级 go.mod/go.sum；产品开发随后进入 SQLite 与 Web 阶段。
 
-探针分成 internal/coreconsumer 与 internal/legacycompat，避免旧测试的 config import 导致聚合图误判。internal/dependencycheck 分别验证 core 的三平台图、整体 CLI/TUI 边界与远端版本。未来生产入口仍须单独检查；当前没有产品入口。
+探针仅保留 internal/coreconsumer。internal/dependencycheck 对 Linux/Windows/macOS 的全量生产和测试图强制 core-only 上游依赖，同时检查固定远端版本。当前尚无产品入口；新增入口自动纳入同一检查。
 
 详细阶段与产品范围见[路线图](roadmap.md)，跨仓库职责见[架构](architecture.md)。
 
 
 ## 可复现的消费者验证
 
-根 module 通过 `GOWORK=off go build ./...`、`GOWORK=off go test ./...` 和 `golangci-lint run ./...` 验证同一个固定远端 pin 的 core 与旧入口契约。旧入口探针不能代替 core 的独立依赖边界检查。
+根 module 通过 `GOWORK=off go build ./...`、`GOWORK=off go test ./...` 和 `golangci-lint run ./...` 验证固定远端 pin 的 core 契约。全量生产与测试依赖图均受 core-only 边界检查约束。
 
 `python3 scripts/check_core_consumer.py --upstream /path/to/xops-cli` 从 internal/coreconsumer 复制探针到临时 module，再在那里设置临时替换。它检查 Linux/Windows/macOS 导入图、当前平台 race、lint，以及真实 HTTP/SSH 命令、二进制 SFTP 往返和动态禁用。两个仓库都不写入 replace、workspace 或改动后的 pin。常规 Go 包发现和 CI 已包含 core 消费测试。
 
