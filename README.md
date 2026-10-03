@@ -24,11 +24,13 @@ xops-cli（CLI 产品与现阶段共享内核的源码仓库）
 - MCP 工具、护栏、传输状态机和 SSH/SFTP 修复只维护一份共享实现。
 - Web、管理 API、数据库模型、迁移及服务端凭据适配器归 `xops-mcp` 所有。
 - 暂不创建第三个共享仓库；共享包的位置和版本策略见架构文档。
+- 公共代码计划在上游收敛到可独立抽取的 `core/` 子树，旧 `pkg/*` 路径保留为兼容入口；上游本地迁移及独立抽取已通过验证，当前发布 pin 尚未升级。
 - 初期按单实例设计：SQLite 为默认存储，PostgreSQL 为后续外部数据库选项。
 
 ## 设计与实施
 
 - [架构与依赖复用决策](docs/architecture.md)
+- [公共接口解耦与服务端接入](docs/interface-decoupling.md)
 - [实施路线与验收条件](docs/roadmap.md)
 - [当前依赖基线与验证范围](docs/reuse-baseline.md)
 - [开发约定](AGENTS.md)
@@ -50,3 +52,6 @@ go test -race -timeout=120s ./...
 ## 许可证
 
 [MIT](LICENSE)，与上游项目保持一致。
+
+
+新 core 接口另有隔离消费探针：`python3 scripts/check_core_consumer.py --upstream /path/to/xops-cli`。本地预览覆盖实际 SSH/SFTP、动态准入和关闭；它使用临时 module，不能替代发布后的 `--version EXACT_VERSION` 验收。详见[接口接入状态](docs/interface-decoupling.md)。

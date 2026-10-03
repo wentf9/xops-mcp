@@ -21,7 +21,7 @@
 
 ## Consumer checks
 
-The checks in `internal/compat` are authored in this independent module and use exported upstream APIs.
+The checks in `internal/legacycompat` are authored in this independent module and use exported upstream APIs.
 
 | Check | Evidence |
 | --- | --- |

@@ -1,6 +1,11 @@
 # 架构与跨仓库依赖复用
 
+上游本地 D1–D5 和独立抽取已有实现与测试；本仓库新增隔离 core 消费探针，但根 module 仍固定旧远端版本。下文的服务端数据库/Web 产品能力尚未实现，当前接入状态见[接口解耦](interface-decoupling.md)。
+
+
 状态：已选定的实施方案；下文明确标记的接口改造和产品能力尚未实现。
+
+M1 进一步要求上游公共代码具备独立抽取能力。目标是将共享实现收敛到 `xops-cli/core/`，由旧 `pkg/*` 保留兼容入口；新服务最终直接导入 core。当前实际依赖仍是初始化时的 `pkg/*` 固定版本。详细接口、更新一致性和验收见[公共接口解耦](interface-decoupling.md)。
 
 ## 1. 产品边界
 
@@ -21,13 +26,15 @@ flowchart TD
     Adapters --> DB[SQLite / PostgreSQL]
 ```
 
-共享内核暂时保留在 `xops-cli` Go module 中。新仓库的独立性体现为独立入口、业务存储、Web 和发布周期；共享协议与执行实现依靠版本化依赖复用。
+共享内核暂时保留在 `xops-cli` Go module 中。图中为当前复用路径；D1–D6 完成后共同指向 `core/mcp/runtime`、`core/ssh` 和 `core/sftp`。新仓库的独立性体现为独立入口、业务存储、Web 和发布周期；共享协议与执行实现依靠版本化依赖复用。
 
 不复制 `pkg/mcpserver`、`pkg/ssh` 或 `pkg/sftp` 建立长期分叉，不使用 Git submodule，不提交指向相邻目录的 `replace`。`xops-cli` 的源码、模块及常规 CI 均不得依赖新服务仓库，避免依赖环和私有服务逻辑侵入 CLI。
 
 第三个 `xops-core` module/repository 仅在共享包已经解耦，并且出现额外消费者、独立维护团队或实际发布阻塞时重新评估。届时两个产品同时依赖新的中立模块；不形成两个仓库互相导入的过渡状态。
 
 ## 3. 源码归属与导入边界
+
+下表列出当前实现归属；公共实现随后移动到 core，旧包仅做包装，不形成第二份实现。
 
 | 能力 | 唯一源码归属 | 新服务的接入方式 |
 | --- | --- | --- |
@@ -40,7 +47,7 @@ flowchart TD
 | 数据库到共享内核的转换与凭据解析 | `xops-mcp/internal/adapters`（计划） | 消费方实现接口，禁止共享内核回调服务端具体包 |
 | SQLite/PostgreSQL 实体与查询 | `xops-mcp/internal/storage`（计划） | 不作为 MCP schema 或 CLI 数据结构公开 |
 
-允许直接使用的共享入口是 `pkg/mcpserver`、其公开子包、`pkg/ssh`、`pkg/sftp` 和 `pkg/logger`。过渡适配器与兼容测试可以使用 `pkg/config`、`pkg/models`、`pkg/credential`、`pkg/adapter` 和 `pkg/utils/concurrent`。这些类型不进入 Web API 或数据库实体定义。
+初始化和过渡阶段允许直接使用的共享入口是 `pkg/mcpserver`、其公开子包、`pkg/ssh`、`pkg/sftp` 和 `pkg/logger`。过渡适配器与兼容测试可以使用 `pkg/config`、`pkg/models`、`pkg/credential`、`pkg/adapter` 和 `pkg/utils/concurrent`。这些类型不进入 Web API 或数据库实体定义。M1 完成后，生产入口和 core 探针只允许使用 core 公共包；legacy 测试单独检查，不能以兼容测试为由保留生产反向依赖。
 
 禁止导入上游 `cmd`、`cmd/sftpshell`、`pkg/tui`，或从新模块直接导入上游 `internal/*`。上游公开包在其自身 module 内间接使用 `internal/*` 符合 Go 规则，不能据此声称已经完成底层解耦。
 
@@ -61,7 +68,7 @@ flowchart TD
 
 ## 5. 共享内核的改造契约（计划）
 
-先在 `xops-cli` 增加小型、消费方向明确的能力接口，保持现有公开入口与 CLI 行为兼容：
+先在 `xops-cli/core` 增加小型、消费方向明确的能力接口，原包作为兼容外观，保持现有公开入口与 CLI 行为兼容：
 
 1. **执行依赖注入**：允许 `Runtime` 接收 SSH/SFTP 执行服务及其生命周期所有权；运行时自建资源由运行时关闭，借用资源由宿主关闭，契约必须明确，禁止隐式双重所有权。
 2. **每次操作的配置视图**：在工具开始或传输准备时获取一致的节点、身份、完整 ProxyJump 链及配置版本；该视图贯穿审批、凭据解析与执行。不能让一次操作多次读取不同版本。
@@ -70,7 +77,7 @@ flowchart TD
 5. **凭据绑定**：解析请求绑定节点、目标、用途和版本，版本冲突明确失败；秘密不得经 Web DTO、MCP 节点列表或审计日志泄露。
 6. **策略/审计适配**：保留共享决策和审批逻辑，提供可注入的策略读取及审计输出；具体数据库实现留在新仓库。
 
-接口名称和方法签名在各自实现 PR 中确定。以上描述不是当前已有 API。动态配置必须作为完整能力交付，不能仅删除 `Frozen()` 或为每个 Web 修改重建整个 MCP runtime；后者会终止已有会话和传输。
+拟定接口包括 StateSource、ExecutionGate、Backend 与 AuditSink，以及 SSH 的 KeySource、HostKeyVerifier 和 InputBridge；详细签名以接口解耦设计为准，实施后再通过编译契约冻结。以上描述不是当前已有 API。动态配置必须作为完整能力交付，不能仅删除 `Frozen()` 或为每个 Web 修改重建整个 MCP runtime；后者会终止已有会话和传输。
 
 ## 6. 新服务内部边界（计划）
 
@@ -83,11 +90,11 @@ internal/storage/       业务存储接口与事务边界
 internal/storage/sqlite/
 internal/storage/postgres/
 internal/migrations/    按数据库方言维护的 schema 迁移
-internal/compat/        当前已有的外部消费者兼容测试
+internal/legacycompat/        当前已有的外部消费者兼容测试
 web/                    Web 源码与嵌入资源
 ```
 
-只有 `internal/compat` 已建立。Web API 和 MCP 共用 service 层规则。HTTP 路由由宿主组合：`/mcp` 和 `/v1/transfers/` 使用共享 handler；`/api/v1/` 和 Web 静态路由由新仓库提供。各自鉴权独立，不能把管理 Cookie、MCP Token 和短期传输凭据混为一类。
+只有 `internal/legacycompat` 已建立。Web API 和 MCP 共用 service 层规则。HTTP 路由由宿主组合：`/mcp` 和 `/v1/transfers/` 使用共享 handler；`/api/v1/` 和 Web 静态路由由新仓库提供。各自鉴权独立，不能把管理 Cookie、MCP Token 和短期传输凭据混为一类。
 
 共享包不得 import 新服务的数据库、HTTP API、前端、ORM 或依赖注入容器。
 
@@ -115,7 +122,7 @@ SQLite 为首个实现，文件位于持久化本地数据目录，启用外键�
 - 发布顺序为：上游兼容改造和回归测试通过、提交可从远端获取、新仓库升级固定版本、消费者测试与产品测试通过、新服务发布。版本升级不能依赖未提交的相邻 checkout。
 - `v0` 版本升级同样需要检查公开 API 和行为差异。正式破坏性 Go API 升级遵循新的主版本 module path。
 - MCP 名称、schema、传输行为与错误语义由共享内核统一维护；必要的变化需要两种产品兼容测试。服务端专属管理功能留在 Web API。
-- 上游 CLI 保留原有构建、测试、lint 和平台验证；新仓库验证外部调用契约及服务端能力，不重复复制整套 CLI 测试。
+- 上游 CLI 保留原有构建、测试、lint 和平台验证，并增加仅复制 core 子树的独立 module 抽取检查；新仓库验证外部调用契约及服务端能力，不重复复制整套 CLI 测试。
 
 ## 9. 兼容迁移与验收
 

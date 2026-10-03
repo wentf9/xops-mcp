@@ -1,6 +1,11 @@
 # Architecture and cross-repository reuse
 
+Upstream D1–D5 and independent extraction have local implementations and tests. This repository now includes isolated core probes, while the root module still pins the original remote version. Database/Web product features below remain unimplemented; see [interface integration](interface-decoupling.md).
+
+
 Status: selected implementation plan. Proposed interfaces and product features below are not implemented yet.
+
+M1 also requires an independently extractable public core. Shared implementations will consolidate under `xops-cli/core/`; existing public paths become compatibility facades, and new production consumers import core directly. The current dependency remains the bootstrap pin and old paths. See [interface decoupling](interface-decoupling.md) for detailed contracts and acceptance.
 
 ## 1. Product boundaries
 
@@ -18,13 +23,15 @@ xops-cli command entry points ────────────────�
                                              pkg/ssh + pkg/sftp
 ```
 
-The shared core remains in the `xops-cli` Go module for now. Independent server entry points, storage, web code, and releases establish the new product boundary; versioned imports share protocol and execution behavior.
+The shared core remains in the `xops-cli` Go module for now. The diagram shows current reuse; D1–D6 replace those implementation paths with `core/mcp/runtime`, `core/ssh`, and `core/sftp`. Independent server entry points, storage, web code, and releases establish the new product boundary; versioned imports share protocol and execution behavior.
 
 Do not copy the shared MCP/SSH/SFTP implementations, use Git submodules, or commit sibling-directory replacements. Upstream source, modules, and normal CI must not depend on the new server repository.
 
 A third `xops-core` module/repository can be reconsidered after package decoupling and a concrete need such as another consumer, separate ownership, or release contention. Both products would then depend on that neutral module without a reciprocal dependency phase.
 
 ## 3. Ownership and imports
+
+The table describes current source ownership. Move shared implementations into core and retain thin old-package facades, not a second implementation.
 
 | Capability | Source owner | Server integration |
 | --- | --- | --- |
@@ -36,7 +43,7 @@ A third `xops-core` module/repository can be reconsidered after package decoupli
 | Web, management API, database models/migrations | `xops-mcp` | Server-owned services |
 | Database-to-core adapters | Planned `xops-mcp/internal/adapters` | Consumer implementations of shared contracts |
 
-Shared public entry points are `pkg/mcpserver` and its public subpackages, `pkg/ssh`, `pkg/sftp`, and `pkg/logger`. Transitional adapters and compatibility tests may use `pkg/config`, `pkg/models`, `pkg/credential`, `pkg/adapter`, and `pkg/utils/concurrent`. Their types must not become database entities or Web API DTOs.
+Bootstrap/transitional entry points are `pkg/mcpserver` and its public subpackages, `pkg/ssh`, `pkg/sftp`, and `pkg/logger`. Transitional adapters and compatibility tests may use `pkg/config`, `pkg/models`, `pkg/credential`, `pkg/adapter`, and `pkg/utils/concurrent`. Their types must not become database entities or Web API DTOs. After M1, production and core probes import core only; separate legacy probes must not justify production reverse dependencies.
 
 Do not import upstream `cmd`, `cmd/sftpshell`, `pkg/tui`, or upstream `internal` packages directly. Upstream packages may legally depend on their own internal packages; that does not prove a fully decoupled core.
 
@@ -57,7 +64,7 @@ Resolve these boundaries through upstream interfaces instead of source copies or
 
 ## 5. Planned shared-core contracts
 
-Keep existing public constructors and CLI behavior compatible while adding:
+Add small ports under `xops-cli/core` while retaining old packages as compatible facades:
 
 1. Execution-service injection with explicit owned versus borrowed resource cleanup.
 2. One immutable operation view covering node, identity, the entire jump chain, and versions across approval, secret resolution, and execution.
@@ -66,7 +73,7 @@ Keep existing public constructors and CLI behavior compatible while adding:
 5. Secret resolution bound to node, target, purpose, and version; stale requests fail explicitly.
 6. Injectable policy retrieval and audit output while retaining one shared decision/approval implementation.
 
-Names and signatures will be finalized in implementation PRs. Removing `Frozen()` alone is insufficient, and recreating the whole Runtime on every edit would disconnect MCP sessions and transfers.
+Proposed contracts are StateSource, ExecutionGate, Backend, AuditSink, and the SSH KeySource, HostKeyVerifier, and InputBridge. Detailed signatures are specified in the decoupling design and will be frozen through consumer contracts after implementation. Removing `Frozen()` alone is insufficient, and recreating the whole Runtime on every edit would disconnect MCP sessions and transfers.
 
 ## 6. Planned server structure
 
@@ -79,11 +86,11 @@ internal/storage/         business repositories and transactions
 internal/storage/sqlite/
 internal/storage/postgres/
 internal/migrations/      dialect-specific migrations
-internal/compat/          existing external-consumer checks
+internal/legacycompat/          existing external-consumer checks
 web/                      source and embedded assets
 ```
 
-Only `internal/compat` exists today. Web and MCP use the same service rules. The host routes `/mcp` and `/v1/transfers/` to the shared handler, and owns `/api/v1/` plus static Web routes. Administrator sessions, MCP tokens, and short-lived transfer credentials remain distinct.
+Only `internal/legacycompat` exists today. Web and MCP use the same service rules. The host routes `/mcp` and `/v1/transfers/` to the shared handler, and owns `/api/v1/` plus static Web routes. Administrator sessions, MCP tokens, and short-lived transfer credentials remain distinct.
 
 Shared packages must not import server database code, API handlers, frontend code, ORMs, or server dependency containers.
 
@@ -111,7 +118,7 @@ The existing transfer journal initially remains in a dedicated local directory. 
 - Land and validate upstream interface changes first, make their commit remotely available, upgrade the server pin, run consumer/product checks, and then release the server.
 - Review API and behavior changes even for v0 upgrades. Breaking stable Go APIs require a new major module path.
 - Shared MCP schemas and behavior remain in the shared core. Server management features belong to the Web API.
-- Upstream retains its own build/test/lint/platform gates; the new repository tests consumer compatibility and server behavior without copying the upstream suite.
+- Upstream retains its own build/test/lint/platform gates and adds an isolated module extraction check using only core; the new repository tests consumer compatibility and server behavior without copying the upstream suite.
 
 ## 9. Migration and acceptance
 

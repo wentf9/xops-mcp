@@ -1,4 +1,4 @@
-package compat_test
+package legacycompat_test
 
 import (
 	"context"

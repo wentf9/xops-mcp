@@ -24,11 +24,13 @@ xops-cli: CLI product and current shared-core source owner
 - MCP tools, guardrails, transfer state machines, and SSH/SFTP fixes have one shared implementation.
 - Web assets, management APIs, database models, migrations, and server credential adapters belong to `xops-mcp`.
 - A third shared-core repository is deferred until a concrete need justifies it.
+- Shared code is planned to move into an independently extractable upstream `core/` subtree, retaining old package paths as compatibility facades. Local upstream migration and independent extraction pass; the published pin has not yet been upgraded.
 - Initial deployment is single-instance, with SQLite by default and PostgreSQL planned as an external database option.
 
 ## Design and delivery
 
 - [Architecture and dependency decisions](docs/en/architecture.md)
+- [Shared interfaces and server integration](docs/en/interface-decoupling.md)
 - [Roadmap and acceptance criteria](docs/en/roadmap.md)
 - [Dependency baseline and verification scope](docs/reuse-baseline.md)
 - [Contributor instructions](AGENTS.md)
@@ -50,3 +52,6 @@ The build currently checks compatibility packages and produces no server executa
 ## License
 
 [MIT](LICENSE), matching the upstream project.
+
+
+New core interfaces have a separate isolated consumer probe: `python3 scripts/check_core_consumer.py --upstream /path/to/xops-cli`. Local preview covers real SSH/SFTP, dynamic admission and cleanup in a temporary module. Published acceptance uses `--version EXACT_VERSION`. See [integration status](docs/en/interface-decoupling.md).
