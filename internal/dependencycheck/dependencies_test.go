@@ -42,14 +42,14 @@ func TestUpstreamUsesPublishedModuleVersion(t *testing.T) {
 	}
 }
 
-func TestCoreConsumerDependencies(t *testing.T) {
+func TestOnlyCoreUpstreamDependencies(t *testing.T) {
 	const upstream = "github.com/wentf9/xops-cli"
 	for _, target := range []string{"linux", "windows", "darwin"} {
 		t.Run(target, func(t *testing.T) {
-			output := goListTarget(t, target, "-deps", "-test", "./internal/coreconsumer/...")
+			output := goListTarget(t, target, "-deps", "-test", "./...")
 			for dependency := range strings.FieldsSeq(string(output)) {
 				if dependency == upstream || (strings.HasPrefix(dependency, upstream+"/") && !strings.HasPrefix(dependency, upstream+"/core/")) {
-					t.Errorf("application package entered the core consumer graph: %s", dependency)
+					t.Errorf("application package entered the server dependency graph: %s", dependency)
 				}
 			}
 		})

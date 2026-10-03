@@ -1,6 +1,6 @@
 # Shared interfaces and server integration
 
-Status: upstream D1–D5 and D6 independent extraction are implemented. This repository pins a remotely downloadable core commit that passed acceptance without replacements. Core tests have moved from testdata to internal/coreconsumer and run in normal CI alongside separate legacy contracts. See the [dependency baseline](../reuse-baseline.md) for the exact pin and PR links. Database, Web and product entry points remain later work.
+Status: upstream D1–D5 and D6 independent extraction are implemented. This repository pins a remotely downloadable core commit that passed acceptance without replacements. Core tests have moved from testdata to internal/coreconsumer and run in normal CI with dependency checks covering the entire module. See the [dependency baseline](../reuse-baseline.md) for the exact pin and PR links. Database, Web and product entry points remain later work.
 
 The authoritative shared-source design is `docs/en/development/shared-core-decoupling.md` in [xops-cli](https://github.com/wentf9/xops-cli). This document defines consumer obligations. Database injection alone does not establish an independently maintainable shared core.
 
@@ -13,7 +13,7 @@ xops-mcp services/storage
        -> shared core/mcp/sshexec, core/ssh, sftp, auth, log
 ```
 
-Upstream auth, log, concurrent, ssh, sftp, and MCP policy/guardrail/transfer/tunnel/remotefile/ports/sshexec packages now exist; runtime composition has also migrated. The consumer imports core through a fixed remote version. Upstream consolidates a self-contained core subtree in the existing module. Old public packages become compatibility facades over one implementation. No nested module or third repository is created at this stage.
+Upstream auth, log, concurrent, ssh, sftp, and MCP policy/guardrail/transfer/tunnel/remotefile/ports/sshexec packages now exist; runtime composition has also migrated. The consumer imports core through a fixed remote version. Upstream consolidates a self-contained core subtree in the existing module. The CLI consumes core directly; obsolete Go API facades are removed while application composition stays outside core. No nested module or third repository is created at this stage.
 
 The server production graph must eventually exclude CLI configuration/models/adapters, vault backends, i18n, TUI, and root terminal internals. Future externalization changes dependency paths in adapters/composition without redesigning server business services.
 
@@ -36,7 +36,7 @@ The host owns the database and administrator sessions. Runtime neither understan
 - Implement KeySource returning a signer/Close lease after database decryption/parsing. Do not write keys into personal directories or expose private paths in inventory/API DTOs.
 - Implement HostKeyVerifier for endpoint, trust revision, and presented public key. Web trust enrollment is a separate management action, not a terminal prompt inside MCP.
 - Inject logging; public Nop must not initialize CLI color/output. The server supplies no local interactive InputBridge.
-- Upstream compatibility adapters preserve legacy CLI environment discovery and native Windows input behavior without entering the new server graph.
+- Upstream internal/sshenv and application adapters preserve CLI environment discovery and native Windows input behavior without entering the server graph.
 
 ## 4. Update flow
 
@@ -96,19 +96,19 @@ Use explicit synchronization barriers, not sleeps or timeout inflation. Report r
 ## 8. Upgrade sequence
 
 1. Upstream D1/D2: neutral leaves and SSH/SFTP boundaries; add independent core probes.
-2. D3: shared MCP runtime and legacy facade; compare schemas, results, and shutdown.
+2. D3: shared MCP runtime and CLI host composition; preserve schemas, results, and shutdown.
 3. D4/D5: dynamic admission/generations and deferred binding; validate using an in-memory source before requiring a database.
 4. D6: isolated extraction passes and consumer tests use public core entry points.
 5. Validate a remotely downloadable fixed version without replacements, update go.mod/go.sum and run root gates before starting SQLite and Web product work.
 
-Separate internal/coreconsumer and internal/legacycompat so old configuration fixtures cannot contaminate core dependency checks. internal/dependencycheck verifies three-platform core graphs, the aggregate CLI/TUI boundary and the remote module pin. Future production entry points require their own graph checks; production code is not yet present.
+Keep only internal/coreconsumer probes. internal/dependencycheck enforces core-only upstream dependencies for every production/test package on Linux/Windows/macOS and verifies the remote pin. Future product entry points automatically enter the same graph check.
 
 See the [roadmap](roadmap.md) and [architecture](architecture.md).
 
 
 ## Reproducible consumer checks
 
-The root module validates core and legacy contracts against the same fixed remote pin with `GOWORK=off go build ./...`, `GOWORK=off go test ./...` and `golangci-lint run ./...`. Legacy probes do not replace the independent core dependency check.
+The root module validates core contracts against the fixed remote pin with `GOWORK=off go build ./...`, `GOWORK=off go test ./...`, and `golangci-lint run ./...`. All production and test dependencies are subject to the core-only boundary.
 
 `python3 scripts/check_core_consumer.py --upstream /path/to/xops-cli` copies internal/coreconsumer into a disposable module and temporarily replaces upstream there. It verifies Linux/Windows/macOS import graphs, race tests on the current platform, lint, real HTTP/SSH commands, binary SFTP roundtrips and dynamic node disablement. No replacement, workspace or rewritten pin enters either repository. Normal Go discovery and CI now include the core tests.
 
