@@ -1,0 +1,24 @@
+version: 1
+hosts:
+  example:
+    address: 192.0.2.10
+    port: 22
+    # Supply a verified SSH public host key before enabling this node.
+    host_key: ""
+identities:
+  operator:
+    user: operator
+    # Reference a credential supplied through an authorized secret import.
+    credential: ""
+nodes:
+  example:
+    host: example
+    identity: operator
+    aliases: [demo]
+    tags: [example]
+    disabled: true
+    sudo_mode: none
+policy:
+  enabled: true
+  approval_threshold: moderate
+  no_elicit_fallback: deny

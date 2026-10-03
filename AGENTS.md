@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-This repository is the standalone XOps MCP server product. Read `docs/architecture.md` and `docs/roadmap.md` before implementation. The current bootstrap contains compatibility tests, not a runnable server.
+This repository is the standalone XOps MCP server product. Read `docs/architecture.md` and `docs/roadmap.md` before implementation. M2 provides the SQLite-backed HTTP server, offline import/recovery commands, and persistent core adapters. Web management and PostgreSQL remain planned.
 
 ## Dependency ownership
 

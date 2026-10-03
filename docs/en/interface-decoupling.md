@@ -1,6 +1,6 @@
 # Shared interfaces and server integration
 
-Status: upstream D1–D5 and D6 independent extraction are implemented. This repository pins a remotely downloadable core commit that passed acceptance without replacements. Core tests have moved from testdata to internal/coreconsumer and run in normal CI with dependency checks covering the entire module. See the [dependency baseline](../reuse-baseline.md) for the exact pin and PR links. Database, Web and product entry points remain later work.
+Status: upstream D1–D5 and D6 independent extraction are implemented. This repository pins a remotely downloadable core commit that passed acceptance without replacements. Core tests have moved from testdata to internal/coreconsumer and run in normal CI with dependency checks covering the entire module. See the [dependency baseline](../reuse-baseline.md) for the exact pin and PR links. M2 database adapters and product entry points are implemented; Web management remains planned.
 
 The authoritative shared-source design is `docs/en/development/shared-core-decoupling.md` in [xops-cli](https://github.com/wentf9/xops-cli). This document defines consumer obligations. Database injection alone does not establish an independently maintainable shared core.
 
@@ -101,7 +101,7 @@ Use explicit synchronization barriers, not sleeps or timeout inflation. Report r
 4. D6: isolated extraction passes and consumer tests use public core entry points.
 5. Validate a remotely downloadable fixed version without replacements, update go.mod/go.sum and run root gates before starting SQLite and Web product work.
 
-Keep only internal/coreconsumer probes. internal/dependencycheck enforces core-only upstream dependencies for every production/test package on Linux/Windows/macOS and verifies the remote pin. Future product entry points automatically enter the same graph check.
+Keep only internal/coreconsumer probes. internal/dependencycheck enforces core-only upstream dependencies for every production/test package on Linux/Windows/macOS and verifies the remote pin. M2 product entry points, storage and adapters are included in the same graph check.
 
 See the [roadmap](roadmap.md) and [architecture](architecture.md).
 
@@ -114,4 +114,4 @@ The root module validates core contracts against the fixed remote pin with `GOWO
 
 Before upgrading, run `python3 scripts/check_core_consumer.py --version EXACT_VERSION` against the downloadable pin without replacement, update root go.mod/go.sum and run root gates. The current fixed version passed this acceptance; the dependency baseline records its exact commit and validation scope.
 
-TransferSession now supports ReserveCommit(ctx, permit): streaming and commit share the retained transport while using separately admitted phases. v2 journals carry secret-free original authorization and losslessly encoded credential versions. Claim, credential reissue and recovery validate that binding. Old v1 records retain status and unknown locks but cannot acquire remote authority. Database adapters must persist domain IDs and dependency versions across restart; SQL storage and Web implementation remain later milestones.
+TransferSession now supports ReserveCommit(ctx, permit): streaming and commit share the retained transport while using separately admitted phases. v2 journals carry secret-free original authorization and losslessly encoded credential versions. Claim, credential reissue and recovery validate that binding. Old v1 records retain status and unknown locks but cannot acquire remote authority. M2 SQL business storage and adapters persist domain IDs and dependency versions across restart; transfers retain the core journal, and Web management remains planned.

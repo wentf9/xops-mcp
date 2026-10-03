@@ -18,7 +18,7 @@ env:
 
 jobs:
   test:
-    name: External consumer contracts
+    name: Server and external consumer contracts
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

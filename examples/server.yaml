@@ -1,0 +1,11 @@
+# Paths are relative to this configuration file. Keep the master key outside
+# data_dir; preserve it separately when backing up the deployment.
+data_dir: data
+master_key_file: master.key
+mcp_token_file: mcp.token
+listen: 127.0.0.1:8080
+# Required for a LAN listener or a reverse proxy; use the externally reachable
+# origin, without /mcp or a path prefix.
+public_url: http://127.0.0.1:8080
+tool_timeout: 5m
+shutdown_timeout: 45s

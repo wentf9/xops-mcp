@@ -1,8 +1,8 @@
 # Roadmap and acceptance criteria
 
-The shared core is integrated through a fixed remote version. Normal CI covers core consumers and dependency boundaries. Database/Web product features remain later milestones; see the [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md).
+The shared core uses a fixed remote version, and M2 implements SQLite and the standalone HTTP MCP server. See the [server guide](server.md), [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md). Web management and PostgreSQL remain later milestones.
 
-M0 bootstrap and M1 consumer integration are implemented. The upstream pin identifies a merged mainline commit; exact versions and validation are recorded in the dependency baseline. M2–M4 describe planned product work and dependency order, not delivery dates.
+M0 bootstrap, M1 consumer integration and M2 standalone service are implemented. The upstream pin includes the published host-key algorithm negotiation repair; its source and acceptance are recorded in the dependency baseline. M3–M4 describe planned product work and dependency order, not delivery dates.
 
 ## M0: repository and verifiable reuse baseline
 
@@ -26,15 +26,21 @@ Add execution-service and policy/audit injection with explicit ownership; operat
 
 Acceptance: upstream gates and consumer contracts; regressions for editing during execution, rotating credentials after approval, disabling/deleting nodes, and shared identity/jump changes; cancellation, deadlines, idempotent Close, and goroutine cleanup; dependency graphs for Linux/Windows/macOS; and isolated module build/tests using only the core subtree without original-module dependencies or replacements. Publish a fixed upstream version before upgrading the server.
 
-The consumer now validates dynamic disablement with an in-memory coordinator, real SSH/SFTP and cleanup against the fixed remote version. Database transactions, Web editing and server credential adapters remain M2/M3 work.
+The consumer validates dynamic disablement with an in-memory coordinator, real SSH/SFTP and cleanup against the fixed remote version. M2 adds database and real-protocol product tests; Web editing belongs to M3.
 
-## M2: SQLite and a runnable standalone MCP server
+## M2: SQLite and a runnable standalone MCP server (implemented)
 
 Owner: `xops-mcp`, with missing shared capabilities implemented upstream.
 
 Add process lifecycle and configuration, persistent directories, migrations, inventory/credential/policy transactions, import dry-run, version publication and invalidation, HTTP MCP authentication, transfer routes, and the existing dedicated journal. Client-local paths remain client-side; directories are archived by the client.
 
 Acceptance: empty/existing database migrations, restart recovery, version conflicts and publication failures, encrypted-secret rotation, real SSH commands and SFTP uploads/downloads, transfer idempotency/unknown recovery, and unauthorized access rejection.
+
+`cmd/xops-mcp` provides `keygen`, `migrate`, `serve`, `status`, `import` and `recover`. SQLite owns relational entities, stable deployment IDs, versioned AES-GCM ciphertext, historical sources and permanent node tombstones. `internal/service` uses the core coordinator for pre-transaction admission barriers and post-commit publication. `Reconcile` reloads authoritative state and retries publication without replaying the business write.
+
+Tests cover schema upgrades/future-version rejection, rollback/revision conflicts, uncertain commits, publication failure, credential rotation, preservation of admitted targets, deleted-ID reuse prevention, and real local HTTP/SSH/SFTP with encrypted keys, ProxyJump, disablement, trust rejection, transfer idempotency and unknown restart/original-binding verification. Service and consumer tests use race checks and goleak with synthetic deployment-owned credentials.
+
+M2 management uses offline imports. Live updates are verified through the service contract but have no Web/API endpoint yet. The server guide specifies CLI import fields and unresolved credential handling. Native Linux tests are distinct from platform graphs/cross-builds; M2 does not claim native Windows/macOS service acceptance, deployed-host validation or Web delivery.
 
 ## M3: Web management and deployment
 

@@ -1,6 +1,7 @@
 /bin/
 /dist/
 /data/
+/.local/
 /web/node_modules/
 /web/dist/
 go.work

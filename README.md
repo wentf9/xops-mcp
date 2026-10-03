@@ -2,9 +2,23 @@
 
 [English](README_en.md)
 
-面向自托管部署的 MCP 运维服务端，计划通过 Web 控制台管理节点，使用 SQLite 或 PostgreSQL 保存业务数据，复用 [xops-cli](https://github.com/wentf9/xops-cli) 的 SSH、SFTP 和 MCP 能力。
+面向自托管部署的 MCP 运维服务端，使用 SQLite 保存节点与加密凭据，复用 [xops-cli](https://github.com/wentf9/xops-cli) 的 SSH、SFTP 和 MCP 能力。
 
-**当前阶段：公共核心接入与消费者验证。** 已固定可从远端下载的共享 core 版本，常规 CI 覆盖 core 消费与依赖边界；尚未提供可启动的服务端程序、Web 控制台或数据库实现。
+**当前阶段：M2 独立 HTTP MCP 服务。** 已提供 SQLite 迁移、配置导入预览与版本冲突检查、加密凭据、主机公钥校验、文件传输和离线恢复。首版面向 Linux 单实例；Web 控制台与 PostgreSQL 按后续路线实施。
+
+## 启动服务
+
+```sh
+GOWORK=off go build -o bin/xops-mcp ./cmd/xops-mcp
+mkdir -m 700 -p .local
+cp examples/server.yaml .local/server.yaml
+bin/xops-mcp keygen --out .local/master.key
+bin/xops-mcp keygen --out .local/mcp.token
+bin/xops-mcp migrate --config .local/server.yaml
+bin/xops-mcp serve --config .local/server.yaml
+```
+
+默认地址为 `http://127.0.0.1:8080/mcp`，客户端使用 `mcp.token` 内容作为 Bearer Token。空库没有可执行节点；停止服务后按[部署与导入指南](docs/server.md)导入节点、凭据及已核验主机密钥。
 
 ## 两个仓库的关系
 
@@ -29,13 +43,14 @@ xops-cli（CLI 产品与现阶段共享内核的源码仓库）
 
 ## 设计与实施
 
+- [SQLite 服务部署与配置导入](docs/server.md)
 - [架构与依赖复用决策](docs/architecture.md)
 - [公共接口解耦与服务端接入](docs/interface-decoupling.md)
 - [实施路线与验收条件](docs/roadmap.md)
 - [当前依赖基线与验证范围](docs/reuse-baseline.md)
 - [开发约定](AGENTS.md)
 
-## 验证当前骨架
+## 开发验证
 
 要求 Go 1.26+、golangci-lint v2。测试使用临时本地 HTTP 与 SSH/SFTP fixture、合成节点和凭据，不读取个人 XOps/OpenSSH 配置，也不连接部署环境中的主机。
 
@@ -47,9 +62,9 @@ golangci-lint run ./...
 go test -race -timeout=120s ./...
 ```
 
-`go build ./...` 目前验证core 消费者与依赖边界包，不生成服务端二进制。测试覆盖 HTTP 鉴权、MCP 握手与工具集合、SSH 命令、二进制 SFTP 上传/下载、内存协调器动态禁用及资源回收。`internal/dependencycheck` 单独检查 全量生产与测试依赖图的 Linux/Windows/macOS 导入边界；这些图检查不是原生平台运行证据。数据库/Web 尚未实现。
+测试覆盖 SQLite 迁移和事务、加密凭据与绑定、原子发布/不确定提交恢复、HTTP 鉴权、真实本地 SSH/SFTP、加密私钥与 ProxyJump、journal 重启/unknown 锁和进程关闭。`internal/dependencycheck` 检查 Linux/Windows/macOS 全量生产与测试依赖图；图检查不代表 Windows/macOS 原生运行验证。
 
-固定版本的独立消费者验收：`python3 scripts/check_core_consumer.py --version v0.13.1-0.20261003075415-7cb4e30bd97b`。本地联调仍可使用 `--upstream /path/to/xops-cli`，替换仅写入临时 module。详见[接口接入状态](docs/interface-decoupling.md)。
+固定版本的独立消费者验收：`python3 scripts/check_core_consumer.py --version v0.13.1-0.20261003125647-0d4bd2fb866c`。本地联调仍可使用 `--upstream /path/to/xops-cli`，替换仅写入临时 module。详见[接口接入状态](docs/interface-decoupling.md)。
 
 ## 许可证
 

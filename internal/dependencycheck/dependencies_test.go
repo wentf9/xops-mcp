@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -39,6 +40,21 @@ func TestUpstreamUsesPublishedModuleVersion(t *testing.T) {
 	}
 	if module.Path != "github.com/wentf9/xops-cli" || module.Version == "" || module.Replace != nil {
 		t.Fatalf("upstream must use a pinned remote module without replacement: %s", output)
+	}
+}
+
+// Dependency listing does not type-check exported APIs. Compile the actual
+// product with the declared pin even when this test runs in a local workspace,
+// so a successful joint checkout cannot conceal an unpublished dependency.
+func TestPublishedDependencyBuildsProduct(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "go", "build", "-mod=readonly", "-o", filepath.Join(t.TempDir(), "xops-mcp"), "./cmd/xops-mcp")
+	command.Dir = "../.."
+	command.Env = append(os.Environ(), "GOWORK=off")
+	command.WaitDelay = time.Second
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("build standalone product with the declared upstream version: %v\n%s", err, output)
 	}
 }
 
