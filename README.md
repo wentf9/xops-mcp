@@ -49,7 +49,7 @@ go test -race -timeout=120s ./...
 
 `go build ./...` 目前验证core 消费者与依赖边界包，不生成服务端二进制。测试覆盖 HTTP 鉴权、MCP 握手与工具集合、SSH 命令、二进制 SFTP 上传/下载、内存协调器动态禁用及资源回收。`internal/dependencycheck` 单独检查 全量生产与测试依赖图的 Linux/Windows/macOS 导入边界；这些图检查不是原生平台运行证据。数据库/Web 尚未实现。
 
-固定版本的独立消费者验收：`python3 scripts/check_core_consumer.py --version v0.13.1-0.20261003020948-b8ee0ed9f1a0`。本地联调仍可使用 `--upstream /path/to/xops-cli`，替换仅写入临时 module。详见[接口接入状态](docs/interface-decoupling.md)。
+固定版本的独立消费者验收：`python3 scripts/check_core_consumer.py --version v0.13.1-0.20261003075415-7cb4e30bd97b`。本地联调仍可使用 `--upstream /path/to/xops-cli`，替换仅写入临时 module。详见[接口接入状态](docs/interface-decoupling.md)。
 
 ## 许可证
 

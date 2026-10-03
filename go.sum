@@ -26,8 +26,8 @@ github.com/segmentio/encoding v0.5.4 h1:OW1VRern8Nw6ITAtwSZ7Idrl3MXCFwXHPgqESYfv
 github.com/segmentio/encoding v0.5.4/go.mod h1:HS1ZKa3kSN32ZHVZ7ZLPLXWvOVIiZtyJnO1gPH1sKt0=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/wentf9/xops-cli v0.13.1-0.20261003020948-b8ee0ed9f1a0 h1:uINtNUDJzV3EQY4EmUaKI3IY6SQctwE8l8RNSOCIClc=
-github.com/wentf9/xops-cli v0.13.1-0.20261003020948-b8ee0ed9f1a0/go.mod h1:2DmRRviLBXfCK91dsSFgRlVfO0b1YNOmiBzLVPSUc+8=
+github.com/wentf9/xops-cli v0.13.1-0.20261003075415-7cb4e30bd97b h1:NU2PeB4+x+2nQJcssy3/rSWOrF0cy/LPlmxUaLgx4Z0=
+github.com/wentf9/xops-cli v0.13.1-0.20261003075415-7cb4e30bd97b/go.mod h1:2DmRRviLBXfCK91dsSFgRlVfO0b1YNOmiBzLVPSUc+8=
 github.com/yosida95/uritemplate/v3 v3.0.2 h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=
 github.com/yosida95/uritemplate/v3 v3.0.2/go.mod h1:ILOh0sOhIJR3+L/8afwt/kE++YT040gmv5BQTMR2HP4=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=

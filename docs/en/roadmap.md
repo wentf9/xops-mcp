@@ -2,7 +2,7 @@
 
 The shared core is integrated through a fixed remote version. Normal CI covers core consumers and dependency boundaries. Database/Web product features remain later milestones; see the [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md).
 
-M0 bootstrap and M1 consumer integration are implemented. The upstream change is pinned to a pushed commit; PR merge status is tracked separately. M2–M4 describe planned product work and dependency order, not delivery dates.
+M0 bootstrap and M1 consumer integration are implemented. The upstream pin identifies a merged mainline commit; exact versions and validation are recorded in the dependency baseline. M2–M4 describe planned product work and dependency order, not delivery dates.
 
 ## M0: repository and verifiable reuse baseline
 

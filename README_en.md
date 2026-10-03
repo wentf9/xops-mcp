@@ -49,7 +49,7 @@ go test -race -timeout=120s ./...
 
 The build checks core consumer and dependency-boundary packages and produces no server executable. Tests cover HTTP authentication, MCP initialization and tool sets, SSH commands, binary SFTP upload/download, dynamic disablement through an in-memory coordinator, and cleanup. `internal/dependencycheck` checks every production/test graph for Linux/Windows/macOS; import-graph checks are not native execution evidence. Database and Web features remain unimplemented.
 
-Validate the fixed version independently with `python3 scripts/check_core_consumer.py --version v0.13.1-0.20261003020948-b8ee0ed9f1a0`. Local development can still use `--upstream /path/to/xops-cli`; replacements exist only in a disposable module. See [integration status](docs/en/interface-decoupling.md).
+Validate the fixed version independently with `python3 scripts/check_core_consumer.py --version v0.13.1-0.20261003075415-7cb4e30bd97b`. Local development can still use `--upstream /path/to/xops-cli`; replacements exist only in a disposable module. See [integration status](docs/en/interface-decoupling.md).
 
 ## License
 

@@ -109,8 +109,8 @@ The existing transfer journal initially remains in a dedicated local directory. 
 
 ## 8. Versions, development, and release
 
-- Commit exact module versions and checksums. Prefer release tags; use canonical commit-bound pseudo-versions when needed.
-- The current pin identifies a pushed upstream commit containing core; see the dependency baseline. A canonical pseudo-version is neither a release tag nor evidence that its PR has merged.
+- Commit exact module versions and checksums. Prefer release tags; otherwise use canonical pseudo-versions whose commits remain reachable from the main branch. Before removing feature branches, verify the pin with an empty module cache and `GOPROXY=direct`; existing local or proxy caches do not prove continued source availability.
+- The current pin identifies a merged upstream mainline commit containing core; see the dependency baseline. A canonical pseudo-version is not a release tag.
 - Local joint development may use a workspace outside both repositories. Never commit it; CI uses `GOWORK=off`.
 - Land and validate upstream interface changes first, make their commit remotely available, upgrade the server pin, run consumer/product checks, and then release the server.
 - Review API and behavior changes even for v0 upgrades. Breaking stable Go APIs require a new major module path.
