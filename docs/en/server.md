@@ -1,8 +1,8 @@
-# SQLite server deployment and inventory import
+# Server deployment and inventory import
 
 [简体中文](../server.md)
 
-The server targets a single Linux instance and exposes Streamable HTTP MCP and file transfers. Build with Go 1.26+. Inventory can be managed live through the [Web console](web-console.md) or through offline commands. PostgreSQL is not available yet.
+The server targets a single Linux instance and exposes Streamable HTTP MCP and file transfers. Build with Go 1.26+. Inventory can be managed live through the [Web console](web-console.md) or through offline commands. The default SQLite configuration is described below; see the [PostgreSQL guide](postgresql.md) for its configuration and explicit offline migration.
 
 ## Start the server
 
@@ -120,4 +120,4 @@ bin/xops-mcp recover --config .local/server.yaml --id TRANSFER_ID --resolve-unkn
 
 Listing does not contact SSH or modify the journal. `--verify` inspects the original destination; `--cleanup` removes only task-owned temporary files. `--resolve-unknown` records operator acknowledgement and releases destination protection, without retransmitting or changing `unknown` into success. Changed node/credential/trust bindings prevent remote verification and cleanup; inspect the original target manually.
 
-Restarts preserve deployment identity, relevant versions and unknown-result locks. Stop the service before backing up the complete data directory (database and journal), and protect the master key, MCP token and configuration separately. Restore with the same master key; losing it makes credentials unrecoverable. The current server is single-instance and has no online-backup, automatic master-key rotation or PostgreSQL migration command.
+Restarts preserve deployment identity, relevant versions and unknown-result locks. Stop the service before backing up the complete data directory (database and journal), and protect the master key, MCP token and configuration separately. Restore with the same master key; losing it makes credentials unrecoverable. The server remains single-instance without online backup or automatic master-key rotation. `db-export`, `db-import` and `db-verify` provide encrypted offline database archives and cross-backend verification; see [PostgreSQL and offline migration](postgresql.md). Archives exclude the journal and deployment keys.

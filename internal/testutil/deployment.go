@@ -16,7 +16,8 @@ import (
 	"github.com/wentf9/xops-mcp/internal/importer"
 	"github.com/wentf9/xops-mcp/internal/secure"
 	"github.com/wentf9/xops-mcp/internal/storage"
-	"github.com/wentf9/xops-mcp/internal/storage/sqlite"
+	"github.com/wentf9/xops-mcp/internal/storage/database"
+	"github.com/wentf9/xops-mcp/internal/testutil/pgfixture"
 	cryptoSSH "golang.org/x/crypto/ssh"
 )
 
@@ -37,16 +38,23 @@ func Config(t *testing.T) config.Config {
 	if err := os.WriteFile(c.MCPTokenFile, []byte("synthetic-mcp-token-01234567890123456789"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if os.Getenv("XOPS_TEST_BACKEND") == "postgres" {
+		c.DatabaseDriver = "postgres"
+		c.PostgresDSNFile = filepath.Join(dir, "postgres.dsn")
+		if err := os.WriteFile(c.PostgresDSNFile, []byte(pgfixture.DSN(t)), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return c
 }
-func Store(t *testing.T) (*sqlite.Store, *secure.Vault, config.Config) {
+func Store(t *testing.T) (storage.Database, *secure.Vault, config.Config) {
 	t.Helper()
 	cfg := Config(t)
 	vault, err := cfg.Vault()
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := sqlite.Open(t.Context(), cfg.DataDir, vault)
+	s, err := database.Open(t.Context(), cfg, vault, true)
 	if err != nil {
 		t.Fatal(err)
 	}

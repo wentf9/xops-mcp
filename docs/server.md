@@ -1,8 +1,8 @@
-# SQLite 服务部署与配置导入
+# 服务部署与配置导入
 
 [English](en/server.md)
 
-服务面向 Linux 单实例部署，提供 Streamable HTTP MCP 和文件传输。需要 Go 1.26+ 构建。可通过 [Web 控制台](web-console.md)在线管理配置，也保留离线命令；PostgreSQL 尚未提供。
+服务面向 Linux 单实例部署，提供 Streamable HTTP MCP 和文件传输。需要 Go 1.26+ 构建。可通过 [Web 控制台](web-console.md)在线管理配置，也保留离线命令；SQLite 默认配置见下文；PostgreSQL 配置和显式离线迁移见 [PostgreSQL 指南](postgresql.md)。
 
 ## 启动
 
@@ -120,4 +120,4 @@ bin/xops-mcp recover --config .local/server.yaml --id TRANSFER_ID --resolve-unkn
 
 列表不连接 SSH，不修改 journal。`--verify` 核验原始目标；`--cleanup` 只清理由原任务拥有的临时文件。`--resolve-unknown` 记录人工处理结果并释放目标保护，不重传文件，也不把 `unknown` 改成成功。节点/凭据/信任绑定已经变化时，远程核验和清理拒绝执行，需人工核对原目标。
 
-重启保留部署 ID、相关版本和未知结果锁。备份前停止服务，完整备份数据目录（数据库及 journal），并单独保护主密钥、MCP Token 和配置。恢复到新目录时使用同一主密钥；丢失主密钥无法解密凭据。当前只支持单实例，没有在线备份、主密钥自动轮换或 PostgreSQL 迁移命令。
+重启保留部署 ID、相关版本和未知结果锁。备份前停止服务，完整备份数据目录（数据库及 journal），并单独保护主密钥、MCP Token 和配置。恢复到新目录时使用同一主密钥；丢失主密钥无法解密凭据。当前只支持单实例，没有在线备份或主密钥自动轮换。`db-export`、`db-import`、`db-verify` 提供加密离线数据库归档和跨后端校验，详见 [PostgreSQL 与离线迁移](postgresql.md)；归档不包含 journal 或部署密钥。

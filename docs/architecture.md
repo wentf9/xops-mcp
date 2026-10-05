@@ -1,8 +1,8 @@
 # 架构与跨仓库依赖复用
 
-共享 core 已通过固定远端版本接入；core 消费与依赖边界检查已纳入常规 CI。M2 SQLite 与独立 HTTP 服务及 M3 Web 管理已实现，PostgreSQL 仍属后续阶段，版本与证据见[依赖基线](reuse-baseline.md)，接入契约见[接口解耦](interface-decoupling.md)。
+共享 core 已通过固定远端版本接入；core 消费与依赖边界检查已纳入常规 CI。M2 SQLite 与独立 HTTP 服务及 M3 Web 管理已实现，M4 PostgreSQL 已实现，版本与证据见[依赖基线](reuse-baseline.md)，接入契约见[接口解耦](interface-decoupling.md)。
 
-状态：共享接口、独立服务、Web、管理 API 与管理员会话已实现；PostgreSQL 尚未实现。运行说明见[服务指南](server.md)。
+状态：共享接口、独立服务、Web、管理 API 与管理员会话已实现；PostgreSQL 和离线数据库迁移已实现。运行说明见[服务指南](server.md)。
 
 上游公共实现已收敛到可独立抽取的 `xops-cli/core/`，CLI 直接导入 core，必要的宿主装配留在应用层。消费者的所有生产和测试代码仅使用上游 core 包；旧入口探针已删除。详细接口、更新一致性和验收见[公共接口解耦](interface-decoupling.md)。
 
@@ -26,7 +26,7 @@ flowchart TD
     Adapters --> DB[SQLite / PostgreSQL]
 ```
 
-共享内核暂时保留在 `xops-cli` Go module 中。图中为已实现的公共复用路径；SQLite 适配器、服务入口和 Web 管理已交付，PostgreSQL 按后续阶段实施。新仓库的独立性体现为独立入口、业务存储、Web 和发布周期；共享协议与执行实现依靠版本化依赖复用。
+共享内核暂时保留在 `xops-cli` Go module 中。图中为已实现的公共复用路径；SQLite 适配器、服务入口和 Web 管理已交付，PostgreSQL 和加密离线归档已交付。新仓库的独立性体现为独立入口、业务存储、Web 和发布周期；共享协议与执行实现依靠版本化依赖复用。
 
 不复制 `pkg/mcpserver`、`pkg/ssh` 或 `pkg/sftp` 建立长期分叉，不使用 Git submodule，不提交指向相邻目录的 `replace`。`xops-cli` 的源码、模块及常规 CI 均不得依赖新服务仓库，避免依赖环和私有服务逻辑侵入 CLI。
 
@@ -45,7 +45,7 @@ flowchart TD
 | 本地 YAML、CLI 凭据库、TUI、命令入口 | `xops-cli` | CLI 自己使用；服务端不调用命令或启动子进程包装 CLI |
 | Web、管理 API、管理员会话、数据库迁移 | `xops-mcp` | 服务端业务层直接拥有 |
 | 数据库到共享内核的转换与凭据解析 | `xops-mcp/internal/adapters/xops` | 消费方实现接口，禁止共享内核回调服务端具体包 |
-| SQLite/PostgreSQL 实体与查询 | `xops-mcp/internal/storage`（SQLite 已实现，PostgreSQL 计划） | 不作为 MCP schema 或 CLI 数据结构公开 |
+| SQLite/PostgreSQL 实体与查询 | `xops-mcp/internal/storage`（SQLite 与 PostgreSQL 已实现） | 不作为 MCP schema 或 CLI 数据结构公开 |
 
 所有生产代码和测试仅使用上游 `core/*` 公共包。配置、模型、凭据与终端适配器不进入消费者依赖图。`internal/dependencycheck` 在 Linux/Windows/macOS 检查整个 module 的生产和测试图，并验证固定远端版本。
 
@@ -86,19 +86,21 @@ internal/storage/       业务存储接口与事务边界
 internal/storage/sqlite/
 internal/storage/postgres/
 internal/storage/sqlite/migrations/  嵌入的 SQLite schema 迁移
+internal/storage/postgres/migrations/ 独立 PostgreSQL schema 迁移
+internal/storage/archive/             后端无关的加密离线归档
 internal/coreconsumer/   已有的 core 消费者契约
 
 internal/dependencycheck/ 已有的依赖边界与版本检查
 web/                    Web 源码与嵌入资源
 ```
 
-`cmd/xops-mcp`、`internal/{command,config,server,service,adapters,storage,secure,importer}`、消费者和依赖检查已建立；`internal/api`、`internal/adminauth`、`internal/operations` 和嵌入式 Web 已实现，PostgreSQL 仍属计划。Web API 和 MCP 共用 service 层规则。HTTP 使用两个独立监听器：MCP 端口仅将 `/mcp` 和 `/v1/transfers/` 交给共享 handler；管理端口提供带可配置 `web_base_path` 的页面、资源和 `/api/v1/`。管理监听默认仅绑定回环地址，不继承 MCP 的 Host/origin 配置。各自鉴权独立，不能把管理 Cookie、MCP Token 和短期传输凭据混为一类。
+`cmd/xops-mcp`、`internal/{command,config,server,service,adapters,storage,secure,importer}`、消费者和依赖检查已建立；`internal/api`、`internal/adminauth`、`internal/operations` 和嵌入式 Web 已实现，PostgreSQL、后端选择和离线数据库迁移已实现。Web API 和 MCP 共用 service 层规则。HTTP 使用两个独立监听器：MCP 端口仅将 `/mcp` 和 `/v1/transfers/` 交给共享 handler；管理端口提供带可配置 `web_base_path` 的页面、资源和 `/api/v1/`。管理监听默认仅绑定回环地址，不继承 MCP 的 Host/origin 配置。各自鉴权独立，不能把管理 Cookie、MCP Token 和短期传输凭据混为一类。
 
 共享包不得 import 新服务的数据库、HTTP API、前端、ORM 或依赖注入容器。
 
 ## 7. 数据持久化与更新语义
 
-SQLite 为首个实现，文件位于持久化本地数据目录，启用外键、WAL 和有界 busy 等待；应用层仍需事务、超时和并发控制。PostgreSQL 是明确的第二种后端；首期不承诺任意 SQL 数据库兼容。
+SQLite 为首个实现，文件位于持久化本地数据目录，启用外键、WAL 和有界 busy 等待；应用层仍需事务、超时和并发控制。PostgreSQL 是已实现的第二种后端，使用独立的 schema_version 和 SQL，不承诺任意 SQL 数据库兼容。部署级 advisory lock 与本地目录锁共同限制单实例；读事务使用 repeatable read，查询绑定同一物理所有权会话，连接丢失后关闭准入并退出服务。后端选择、离线归档及验收见 [PostgreSQL 指南](postgresql.md)。
 
 已实现 hosts、identities、nodes、tags、credential metadata/ciphertext、policies 和 audit events；M3 已增加 admin 与 admin_sessions；schema v5 将标签改为独立的 `tags(id,name)` 记录，节点通过 `node_tags(node_id,tag_id)` 外键关联。标签可独立创建，重命名保持主键和关联，删除时仅解除节点关联。节点使用稳定的不透明 ID，地址、端口、用户名和别名均可编辑；导入时记录旧 selector 到新 ID 的映射。
 

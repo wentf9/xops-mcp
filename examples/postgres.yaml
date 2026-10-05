@@ -1,0 +1,14 @@
+# Paths are relative to this file. The URL belongs in a separate mode-0600 file.
+database_driver: postgres
+postgres_dsn_file: postgres.dsn
+data_dir: postgres-data
+master_key_file: master.key
+mcp_token_file: mcp.token
+admin_bootstrap_token_file: admin.setup
+web_enabled: true
+web_listen: 127.0.0.1:8081
+web_public_url: http://127.0.0.1:8081
+listen: 127.0.0.1:8080
+public_url: http://127.0.0.1:8080
+tool_timeout: 5m
+shutdown_timeout: 45s

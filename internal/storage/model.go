@@ -90,3 +90,13 @@ type Repository interface {
 	Source(context.Context, Source) (Source, error)
 	Append(context.Context, ports.AuditEvent) error
 }
+
+// Database is owned by the deployment host. Backup operations are offline and
+// preserve identity/history; they are deliberately separate from API edits.
+type Database interface {
+	Repository
+	AdminRepository
+	Export(context.Context) (Backup, error)
+	Restore(context.Context, Backup) error
+	Close() error
+}

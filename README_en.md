@@ -2,9 +2,9 @@
 
 [简体中文](README.md)
 
-A self-hosted MCP operations server with SQLite inventory and encrypted credentials, sharing SSH/SFTP/MCP capabilities with [xops-cli](https://github.com/wentf9/xops-cli).
+A self-hosted MCP operations server with SQLite or PostgreSQL inventory and encrypted credentials, sharing SSH/SFTP/MCP capabilities with [xops-cli](https://github.com/wentf9/xops-cli).
 
-**Status: M3 Web management and deployment.** The embedded single-administrator console provides live inventory/credential management, host trust, policy and audit alongside SQLite, HTTP MCP and file transfers. The target is a single Linux instance; PostgreSQL is the next milestone.
+**Status: M4 PostgreSQL backend.** The embedded single-administrator console provides live inventory/credential management, host trust, policy and audit alongside SQLite, HTTP MCP and file transfers. The target is a single Linux instance, with PostgreSQL and encrypted offline database export/import/verification now available.
 
 ## Start the server
 
@@ -40,13 +40,14 @@ xops-cli: CLI product and current shared-core source owner
 - Web assets, management APIs, database models, migrations, and server credential adapters belong to `xops-mcp`.
 - A third shared-core repository is deferred until a concrete need justifies it.
 - Shared implementations now live in an independently extractable upstream `core/` subtree, with direct CLI consumption and application-owned host adapters. This repository tests core directly using a fixed remote commit without local replacements.
-- Initial deployment is single-instance, with SQLite by default and PostgreSQL planned as an external database option.
+- Initial deployment is single-instance, with SQLite by default and PostgreSQL as an optional external database.
 
 ## Design and delivery
 
 - [Web console, API and deployment](docs/en/web-console.md)
 
-- [SQLite deployment and inventory import](docs/en/server.md)
+- [Server deployment and inventory import](docs/en/server.md)
+- [PostgreSQL and offline database migration](docs/en/postgresql.md)
 - [Architecture and dependency decisions](docs/en/architecture.md)
 - [Shared interfaces and server integration](docs/en/interface-decoupling.md)
 - [Roadmap and acceptance criteria](docs/en/roadmap.md)
@@ -65,7 +66,7 @@ golangci-lint run ./...
 go test -race -timeout=120s ./...
 ```
 
-Tests cover SQLite migrations/transactions, encrypted credentials and binding checks, atomic publication and uncertain-commit recovery, HTTP authentication, real local SSH/SFTP, encrypted private keys and ProxyJump, journal restart/unknown locks and shutdown. `internal/dependencycheck` checks every production/test graph for Linux/Windows/macOS; graph checks are not native Windows/macOS execution evidence.
+Tests cover SQLite/PostgreSQL migrations/transactions, cross-backend archive equivalence, database ownership and pool cleanup, encrypted credentials and binding checks, atomic publication and uncertain-commit recovery, HTTP authentication, real local SSH/SFTP, encrypted private keys and ProxyJump, journal restart/unknown locks and shutdown. `internal/dependencycheck` checks every production/test graph for Linux/Windows/macOS; graph checks are not native Windows/macOS execution evidence.
 
 Validate the fixed version independently with `python3 scripts/check_core_consumer.py --version v0.13.1-0.20261003125647-0d4bd2fb866c`. Local development can still use `--upstream /path/to/xops-cli`; replacements exist only in a disposable module. See [integration status](docs/en/interface-decoupling.md).
 

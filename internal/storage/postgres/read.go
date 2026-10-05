@@ -1,4 +1,4 @@
-package sqlite
+package postgres
 
 import (
 	"context"
@@ -31,18 +31,21 @@ func rows(ctx context.Context, db querier, query string, scan func(*sql.Rows) er
 }
 
 func (s *Store) Load(ctx context.Context) (_ storage.Inventory, retErr error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	ctx, release, err := s.acquire(ctx)
 	if err != nil {
 		return storage.Inventory{}, err
 	}
-	defer rollback(tx, &retErr)
+	defer release()
+	tx, finish, err := s.begin(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return storage.Inventory{}, err
+	}
+	defer finish(&retErr)
 	v, err := loadInventory(ctx, tx)
 	if err != nil {
 		return v, err
 	}
-	return v, tx.Commit()
+	return v, commit(ctx, tx)
 }
 
 func loadInventory(ctx context.Context, tx *sql.Tx) (storage.Inventory, error) {
@@ -140,10 +143,13 @@ func loadInventory(ctx context.Context, tx *sql.Tx) (storage.Inventory, error) {
 }
 
 func (s *Store) Credential(ctx context.Context, id, version string) (storage.Credential, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	ctx, release, err := s.acquire(ctx)
+	if err != nil {
+		return storage.Credential{}, err
+	}
+	defer release()
 	c := storage.Credential{ID: id, Version: version}
-	err := s.db.QueryRowContext(ctx, "SELECT kind,ciphertext FROM credential_versions WHERE id=? AND version=?", id, version).Scan(&c.Kind, &c.Ciphertext)
+	err = s.db.QueryRowContext(ctx, "SELECT kind,ciphertext FROM credential_versions WHERE id=$1 AND version=$2", id, version).Scan(&c.Kind, &c.Ciphertext)
 	if err != nil {
 		return c, fmt.Errorf("read bound credential: %w", err)
 	}
@@ -151,9 +157,12 @@ func (s *Store) Credential(ctx context.Context, id, version string) (storage.Cre
 }
 
 func (s *Store) Source(ctx context.Context, q storage.Source) (storage.Source, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	err := s.db.QueryRowContext(ctx, "SELECT credential_id,version,host_key FROM sources WHERE token=? AND node_id=? AND host=? AND port=? AND username=? AND purpose=?", q.Token, q.NodeID, q.Host, q.Port, q.User, q.Purpose).Scan(&q.CredentialID, &q.Version, &q.HostKey)
+	ctx, release, err := s.acquire(ctx)
+	if err != nil {
+		return q, err
+	}
+	defer release()
+	err = s.db.QueryRowContext(ctx, "SELECT credential_id,version,host_key FROM sources WHERE token=$1 AND node_id=$2 AND host=$3 AND port=$4 AND username=$5 AND purpose=$6", q.Token, q.NodeID, q.Host, q.Port, q.User, q.Purpose).Scan(&q.CredentialID, &q.Version, &q.HostKey)
 	if err != nil {
 		return q, fmt.Errorf("read bound material reference: %w", err)
 	}
@@ -161,8 +170,11 @@ func (s *Store) Source(ctx context.Context, q storage.Source) (storage.Source, e
 }
 
 func (s *Store) Append(ctx context.Context, event ports.AuditEvent) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	ctx, release, err := s.acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	// Commands, paths, free-form diagnostics, and details can contain secrets
 	// supplied by clients. Persist only the operation's structured outcome.
 	event.Command, event.Paths, event.Error, event.Details = "", nil, "", ""
@@ -171,7 +183,7 @@ func (s *Store) Append(ctx context.Context, event ports.AuditEvent) error {
 	if err != nil {
 		return fmt.Errorf("encode audit event: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, "INSERT INTO audit_events(occurred_at,operation_id,tool,outcome,event) VALUES(?,?,?,?,?)", event.Timestamp.Format(time.RFC3339Nano), event.OperationID, event.Tool, event.Outcome, data)
+	_, err = s.db.ExecContext(ctx, "INSERT INTO audit_events(occurred_at,operation_id,tool,outcome,event) VALUES($1,$2,$3,$4,$5)", event.Timestamp, event.OperationID, event.Tool, event.Outcome, string(data))
 	if err != nil {
 		return fmt.Errorf("persist audit event: %w", err)
 	}

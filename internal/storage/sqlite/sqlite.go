@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofrs/flock"
 	"github.com/wentf9/xops-cli/core/mcp/guardrail"
 	"github.com/wentf9/xops-mcp/internal/secure"
 	"github.com/wentf9/xops-mcp/internal/storage"
+	"github.com/wentf9/xops-mcp/internal/storage/local"
 	_ "modernc.org/sqlite"
 )
 
@@ -28,6 +28,7 @@ const SchemaVersion = 5
 
 type Store struct {
 	db    *sql.DB
+	vault *secure.Vault
 	close func() error
 }
 
@@ -51,33 +52,14 @@ func open(ctx context.Context, dir string, vault *secure.Vault, allowMigration b
 	if vault == nil {
 		return nil, errors.New("credential vault is required")
 	}
-	if allowMigration {
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			return nil, fmt.Errorf("create data directory: %w", err)
+	if !allowMigration {
+		if _, err := os.Stat(filepath.Join(dir, "xops.db")); err != nil {
+			return nil, errors.New("deployment database is missing; run migrate first")
 		}
-	} else if _, err := os.Stat(filepath.Join(dir, "xops.db")); err != nil {
-		return nil, errors.New("deployment database is missing; run migrate first")
 	}
-	info, err := os.Lstat(dir)
+	lock, err := local.Lock(dir, allowMigration, "xops.db", "xops.db-wal", "xops.db-shm")
 	if err != nil {
-		return nil, fmt.Errorf("inspect data directory: %w", err)
-	}
-	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
-		return nil, errors.New("data directory must be a private directory (0700)")
-	}
-	for _, name := range []string{"server.lock", "xops.db", "xops.db-wal", "xops.db-shm"} {
-		if info, err := os.Lstat(filepath.Join(dir, name)); err == nil {
-			if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
-				return nil, fmt.Errorf("%s must be a private regular file", name)
-			}
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("inspect database file: %w", err)
-		}
-	}
-	lock := flock.New(filepath.Join(dir, "server.lock"), flock.SetPermissions(0600))
-	locked, err := lock.TryLock()
-	if err != nil || !locked {
-		return nil, errors.Join(errors.New("deployment is already in use or cannot be locked"), err, lock.Close())
+		return nil, err
 	}
 	owned := false
 	defer func() {
@@ -114,7 +96,7 @@ func open(ctx context.Context, dir string, vault *secure.Vault, allowMigration b
 	}()
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	s := &Store{db: db}
+	s := &Store{db: db, vault: vault}
 	if err := s.migrate(ctx, vault, allowMigration); err != nil {
 		return nil, err
 	}

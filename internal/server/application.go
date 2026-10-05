@@ -56,6 +56,12 @@ func NewApplication(ctx context.Context, cfg config.Config) (_ *Application, ret
 	dependencies := host.Dependencies()
 	dependencies.Gate = tracker
 	lifetime, cancel := context.WithCancel(ctx)
+	stopHost := context.AfterFunc(host.lifetime, cancel)
+	defer func() {
+		if !owned {
+			stopHost()
+		}
+	}()
 	runtime, err := mcpruntime.NewRuntime(lifetime, mcpruntime.WithDependencies(dependencies), mcpruntime.WithHTTP(options))
 	if err != nil {
 		cancel()
@@ -121,7 +127,7 @@ func NewApplication(ctx context.Context, cfg config.Config) (_ *Application, ret
 		})
 	}
 	app.handler, app.adminHandler = wrap(mux), wrap(adminHandler)
-	app.close = sync.OnceValue(func() error { cancel(); return errors.Join(runtime.Close(), host.Close()) })
+	app.close = sync.OnceValue(func() error { stopHost(); cancel(); return errors.Join(runtime.Close(), host.Close()) })
 	owned = true
 	return app, nil
 }
@@ -185,6 +191,8 @@ func Run(ctx context.Context, cfg config.Config, diagnostics io.Writer) (retErr 
 		retErr = errors.Join(retErr, err)
 		remaining--
 	case <-work.Done():
+	case <-app.Host.lifetime.Done():
+		retErr = errors.Join(retErr, context.Cause(app.Host.lifetime))
 	}
 	cancel()
 	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), app.options.ShutdownTimeout)

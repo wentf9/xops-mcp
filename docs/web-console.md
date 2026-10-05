@@ -2,7 +2,7 @@
 
 [English](en/web-console.md)
 
-控制台使用独立的管理 HTTP 监听器，默认 `127.0.0.1:8081`；MCP 默认监听 `127.0.0.1:8080`。管理端口仅提供页面和管理 API，MCP 端口仅提供 `/mcp` 与 `/v1/transfers/`。Go 程序已嵌入全部 HTML、CSS 和 JavaScript，部署时不需要 Node.js、前端服务器或 CDN。首版面向 Linux 单实例；PostgreSQL、多管理员和 OAuth 不在当前范围内。
+控制台使用独立的管理 HTTP 监听器，默认 `127.0.0.1:8081`；MCP 默认监听 `127.0.0.1:8080`。管理端口仅提供页面和管理 API，MCP 端口仅提供 `/mcp` 与 `/v1/transfers/`。Go 程序已嵌入全部 HTML、CSS 和 JavaScript，部署时不需要 Node.js、前端服务器或 CDN。服务面向 Linux 单实例，SQLite 和 PostgreSQL 共用此控制台；多管理员和 OAuth 不在当前范围内。
 
 ## 管理监听器与路径前缀
 
@@ -148,7 +148,7 @@ Compose 将两个端口分别映射到宿主机回环地址；控制台示例地
 
 ## 备份与恢复
 
-停止唯一运行实例后，完整备份数据目录（SQLite、可能存在的 WAL/SHM 和整个 transfers journal），并分别保管配置、主密钥和 MCP Token。原生部署可使用：
+PostgreSQL 的数据库及迁移步骤见 [PostgreSQL 指南](postgresql.md)，仅复制本地目录不能备份外部数据库。SQLite 部署停止唯一运行实例后，完整备份数据目录（SQLite、可能存在的 WAL/SHM 和整个 transfers journal），并分别保管配置、主密钥和 MCP Token。原生部署可使用：
 
 ```sh
 sudo systemctl stop xops-mcp

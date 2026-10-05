@@ -263,6 +263,20 @@ func content(t *testing.T, ctx context.Context, r *running, p mcpruntime.Prepare
 }
 
 func TestPersistentHTTPCommandTransferAndUnknownRecovery(t *testing.T) {
+	testPersistentHTTPCommandTransferAndUnknownRecovery(t, testutil.Config(t))
+}
+
+func TestSQLiteToPostgresUnknownRecovery(t *testing.T) {
+	if os.Getenv("XOPS_TEST_BACKEND") != "postgres" {
+		t.Skip("cross-backend protocol acceptance")
+	}
+	cfg := testutil.Config(t)
+	cfg.DatabaseDriver, cfg.PostgresDSNFile = "sqlite", ""
+	testPersistentHTTPCommandTransferAndUnknownRecovery(t, cfg)
+}
+
+func testPersistentHTTPCommandTransferAndUnknownRecovery(t *testing.T, cfg config.Config) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	peer, err := sshfixture.New(ctx)
@@ -270,7 +284,6 @@ func TestPersistentHTTPCommandTransferAndUnknownRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer testutil.Close(t, peer)
-	cfg := testutil.Config(t)
 	doc := fixtureDocument(t, peer)
 	r := start(t, ctx, cfg, &doc)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, r.http.URL+"/mcp", nil)
@@ -290,7 +303,7 @@ func TestPersistentHTTPCommandTransferAndUnknownRecovery(t *testing.T) {
 	if peer.Executed.Load() != 1 {
 		t.Fatal("command did not reach SSH fixture")
 	}
-	payload := []byte("server SQLite credential transfer\x00\xff\n")
+	payload := []byte("server persistent credential transfer\x00\xff\n")
 	sum := sha256.Sum256(payload)
 	input := mcpruntime.PrepareUploadInput{RequestID: "upload", NodeID: "peer", RemotePath: "/persistent", Size: int64(len(payload)), SHA256: hex.EncodeToString(sum[:])}
 	var first, upload mcpruntime.PreparedTransferOutput
@@ -365,7 +378,11 @@ func TestPersistentHTTPCommandTransferAndUnknownRecovery(t *testing.T) {
 	if peer.Executed.Load() != 1 {
 		t.Fatal("recovery repeated SSH command")
 	}
-	for _, name := range []string{filepath.Join(cfg.DataDir, "xops.db"), filepath.Join(cfg.DataDir, "transfers", upload.Task.ID+".json")} {
+	names := []string{filepath.Join(cfg.DataDir, "transfers", upload.Task.ID+".json")}
+	if cfg.DatabaseDriver != "postgres" {
+		names = append(names, filepath.Join(cfg.DataDir, "xops.db"))
+	}
+	for _, name := range names {
 		data, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)

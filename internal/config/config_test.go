@@ -41,3 +41,29 @@ func TestMasterKeyValidationAndExplicitPaths(t *testing.T) {
 		t.Fatal("master key stored with database")
 	}
 }
+
+func TestDatabaseSelectionAndConnectionFilePaths(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "server.yaml")
+	for _, tc := range []struct {
+		value string
+		valid bool
+	}{
+		{"", true}, {"database_driver: sqlite\n", true},
+		{"database_driver: mysql\n", false},
+		{"database_driver: postgres\n", false},
+		{"postgres_dsn_file: secret.dsn\n", false},
+		{"database_driver: postgres\npostgres_dsn_file: secret.dsn\n", true},
+	} {
+		if err := os.WriteFile(path, []byte("data_dir: data\nmaster_key_file: master.key\n"+tc.value), 0600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := config.Load(path)
+		if (err == nil) != tc.valid {
+			t.Fatalf("database selection %q: %v", tc.value, err)
+		}
+		if err == nil && cfg.DatabaseDriver == "postgres" && cfg.PostgresDSNFile != filepath.Join(dir, "secret.dsn") {
+			t.Fatal("DSN file is not relative to config")
+		}
+	}
+}

@@ -29,6 +29,7 @@ import (
 	"github.com/wentf9/xops-mcp/internal/server"
 	"github.com/wentf9/xops-mcp/internal/service"
 	"github.com/wentf9/xops-mcp/internal/storage"
+	"github.com/wentf9/xops-mcp/internal/storage/database"
 	"github.com/wentf9/xops-mcp/internal/testutil"
 )
 
@@ -471,5 +472,38 @@ func restoredConfig(t *testing.T, cfg config.Config) config.Config {
 		}
 		clear(data)
 	}
+	if cfg.DatabaseDriver == "postgres" || restored.DatabaseDriver == "postgres" {
+		// A cross-backend restore copies the journal as above, then restores the
+		// logical database. A copied SQLite file is not the target's active store.
+		if cfg.DatabaseDriver != "postgres" && restored.DatabaseDriver == "postgres" {
+			for _, name := range []string{"xops.db", "xops.db-wal", "xops.db-shm"} {
+				if err := os.Remove(filepath.Join(restored.DataDir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+					t.Fatal(err)
+				}
+			}
+		}
+		vault, err := cfg.Vault()
+		if err != nil {
+			t.Fatal(err)
+		}
+		source, err := database.Open(t.Context(), cfg, vault, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		backup, err := source.Export(t.Context())
+		testutil.Close(t, source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		target, err := database.Open(t.Context(), restored, vault, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer testutil.Close(t, target)
+		if err := target.Restore(t.Context(), backup); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	return restored
 }

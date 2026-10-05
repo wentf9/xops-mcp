@@ -18,6 +18,8 @@ import (
 )
 
 type Config struct {
+	DatabaseDriver          string        `yaml:"database_driver"`
+	PostgresDSNFile         string        `yaml:"postgres_dsn_file"`
 	DataDir                 string        `yaml:"data_dir"`
 	MasterKeyFile           string        `yaml:"master_key_file"`
 	MCPTokenFile            string        `yaml:"mcp_token_file"`
@@ -57,10 +59,13 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	for _, value := range []*string{&c.DataDir, &c.MasterKeyFile, &c.MCPTokenFile, &c.AdminBootstrapTokenFile} {
+	for _, value := range []*string{&c.DataDir, &c.MasterKeyFile, &c.MCPTokenFile, &c.AdminBootstrapTokenFile, &c.PostgresDSNFile} {
 		if *value != "" && !filepath.IsAbs(*value) {
 			*value = filepath.Join(base, *value)
 		}
+	}
+	if err := c.ValidateDatabase(); err != nil {
+		return c, err
 	}
 	relative, err := filepath.Rel(c.DataDir, c.MasterKeyFile)
 	if err != nil {
@@ -78,6 +83,22 @@ func Load(path string) (Config, error) {
 		}
 	}
 	return c, nil
+}
+
+func (c Config) ValidateDatabase() error {
+	switch c.DatabaseDriver {
+	case "", "sqlite":
+		if c.PostgresDSNFile != "" {
+			return errors.New("postgres_dsn_file requires database_driver: postgres")
+		}
+	case "postgres":
+		if c.PostgresDSNFile == "" {
+			return errors.New("postgres_dsn_file is required for PostgreSQL")
+		}
+	default:
+		return errors.New("database_driver must be sqlite or postgres")
+	}
+	return nil
 }
 
 func ReadFile(path string, limit int64, private bool) (_ []byte, retErr error) {

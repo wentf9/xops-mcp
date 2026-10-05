@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-This repository is the standalone XOps MCP server product. Read `docs/architecture.md` and `docs/roadmap.md` before implementation. M2 provides the SQLite-backed HTTP server, offline import/recovery commands, and persistent core adapters. M3 adds embedded Web management, administrator sessions, live API edits, and deployment examples. PostgreSQL remains planned.
+This repository is the standalone XOps MCP server product. Read `docs/architecture.md` and `docs/roadmap.md` before implementation. M2 provides the SQLite-backed HTTP server, offline import/recovery commands, and persistent core adapters. M3 adds embedded Web management, administrator sessions, live API edits, and deployment examples. M4 adds PostgreSQL and encrypted offline database export/import/verification. Both backends remain single-instance with a local transfer journal.
 
 ## Dependency ownership
 
@@ -28,6 +28,7 @@ This repository is the standalone XOps MCP server product. Read `docs/architectu
 - Before every code push or PR, pass `go build ./...`, `go test ./...`, and `golangci-lint run ./...` locally.
 - Use golangci-lint v2; run `golangci-lint config verify` after changing its configuration.
 - Run relevant race/lifecycle tests. Distinguish protocol discovery from real SSH/SFTP validation.
+- Run the same business tests with `XOPS_TEST_BACKEND=sqlite` and `postgres`; PostgreSQL tests require `XOPS_TEST_POSTGRES_DSN` pointing to a disposable server with CREATEDB permission. See `docs/postgresql.md`.
 - Update corresponding Chinese and English documentation when changing described behavior.
 - Use conventional commits: `feat:`, `fix:`, `chore:`, `ci:`, `docs:`, or `test:`.
 - Do not infer authorization to modify or publish the upstream repository from work requested here.

@@ -18,9 +18,28 @@ env:
 
 jobs:
   test:
-    name: Server and external consumer contracts
+    name: Server and external consumer contracts (${{ matrix.backend }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: synthetic-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      XOPS_TEST_BACKEND: ${{ matrix.backend }}
+      XOPS_TEST_POSTGRES_DSN: postgres://postgres:synthetic-ci-password@127.0.0.1:5432/postgres?sslmode=disable
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

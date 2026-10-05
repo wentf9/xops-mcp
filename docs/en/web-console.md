@@ -2,7 +2,7 @@
 
 [简体中文](../web-console.md)
 
-The console uses a separate management HTTP listener, defaulting to `127.0.0.1:8081`; MCP defaults to `127.0.0.1:8080`. The management port serves only Web assets and administrator APIs; the MCP port serves only `/mcp` and `/v1/transfers/`. All HTML, CSS and JavaScript are embedded in the Go binary; deployment needs no Node.js, frontend server or CDN. The current target is one Linux instance. PostgreSQL, multiple administrators and OAuth remain outside this milestone.
+The console uses a separate management HTTP listener, defaulting to `127.0.0.1:8081`; MCP defaults to `127.0.0.1:8080`. The management port serves only Web assets and administrator APIs; the MCP port serves only `/mcp` and `/v1/transfers/`. All HTML, CSS and JavaScript are embedded in the Go binary; deployment needs no Node.js, frontend server or CDN. The target is one Linux instance; SQLite and PostgreSQL share this console. Multiple administrators and OAuth remain outside scope.
 
 ## Management listener and path prefix
 
@@ -146,7 +146,7 @@ Update the public origins in [container.yaml](../../examples/deployment/containe
 
 ## Backup and restore
 
-Stop the single instance before copying the complete data directory: SQLite, any WAL/SHM files and the entire transfers journal. Protect configuration, master key and MCP token separately. A native deployment can use:
+For PostgreSQL database backups and migration, see the [PostgreSQL guide](postgresql.md); copying the local directory cannot back up an external database. For SQLite, stop the single instance before copying the complete data directory: SQLite, any WAL/SHM files and the entire transfers journal. Protect configuration, master key and MCP token separately. A native deployment can use:
 
 ```sh
 sudo systemctl stop xops-mcp

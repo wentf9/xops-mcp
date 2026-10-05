@@ -1,5 +1,6 @@
 # Paths are relative to this configuration file. Keep the master key outside
 # data_dir; preserve it separately when backing up the deployment.
+database_driver: sqlite
 data_dir: data
 master_key_file: master.key
 mcp_token_file: mcp.token

@@ -1,8 +1,8 @@
 # Architecture and cross-repository reuse
 
-The shared core is integrated through a fixed remote version. Normal CI covers core consumers and dependency boundaries. M2 SQLite, the standalone HTTP server and M3 Web management are implemented; PostgreSQL remains planned; see the [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md).
+The shared core is integrated through a fixed remote version. Normal CI covers core consumers and dependency boundaries. M2 SQLite, the standalone HTTP server and M3 Web management are implemented; M4 PostgreSQL is implemented; see the [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md).
 
-Status: shared interfaces and the M2 standalone service are implemented. Web management and administrator sessions are implemented; PostgreSQL remains planned. See the [server guide](server.md).
+Status: shared interfaces and the M2 standalone service are implemented. Web management and administrator sessions are implemented; M4 PostgreSQL is implemented. See the [server guide](server.md).
 
 Shared implementations now live in the independently extractable `xops-cli/core/` subtree, with direct CLI consumption and application-owned host adapters. All consumer production and test imports use core; old facade probes are removed. See [interface decoupling](interface-decoupling.md) for detailed contracts and acceptance.
 
@@ -22,7 +22,7 @@ xops-cli entry points ──CLI host adapters─> core/mcp/runtime
                                          core/ssh + core/sftp
 ```
 
-The shared core remains in the `xops-cli` Go module for now. The diagram shows the implemented shared paths; SQLite adapters and the standalone entry point are implemented; Web management is implemented and PostgreSQL remains later work. Independent server entry points, storage, web code, and releases establish the new product boundary; versioned imports share protocol and execution behavior.
+The shared core remains in the `xops-cli` Go module for now. The diagram shows the implemented shared paths; SQLite adapters and the standalone entry point are implemented; Web management is implemented and PostgreSQL and encrypted offline archives are implemented. Independent server entry points, storage, web code, and releases establish the new product boundary; versioned imports share protocol and execution behavior.
 
 Do not copy the shared MCP/SSH/SFTP implementations, use Git submodules, or commit sibling-directory replacements. Upstream source, modules, and normal CI must not depend on the new server repository.
 
@@ -81,19 +81,21 @@ internal/storage/         business repositories and transactions
 internal/storage/sqlite/
 internal/storage/postgres/
 internal/storage/sqlite/migrations/ embedded SQLite migrations
+internal/storage/postgres/migrations/ independent PostgreSQL migrations
+internal/storage/archive/             encrypted backend-neutral offline archives
 internal/coreconsumer/    existing core-consumer contracts
 
 internal/dependencycheck/ existing dependency/version checks
 web/                      source and embedded assets
 ```
 
-`cmd/xops-mcp`, `internal/{command,config,server,service,adapters,storage,secure,importer}`, core consumers and dependency checks exist. The API, administrator authentication, active-operation tracking and embedded Web assets are implemented; PostgreSQL remains planned. Web and MCP use the same service rules. Two independent listeners expose separate surfaces: the MCP port routes only `/mcp` and `/v1/transfers/` to the shared handler; the management port owns assets and `/api/v1/` under its configured `web_base_path`. Management defaults to loopback and has independent Host/origin configuration. Administrator sessions, MCP tokens, and short-lived transfer credentials remain distinct.
+`cmd/xops-mcp`, `internal/{command,config,server,service,adapters,storage,secure,importer}`, core consumers and dependency checks exist. The API, administrator authentication, active-operation tracking and embedded Web assets are implemented; M4 PostgreSQL is implemented. Web and MCP use the same service rules. Two independent listeners expose separate surfaces: the MCP port routes only `/mcp` and `/v1/transfers/` to the shared handler; the management port owns assets and `/api/v1/` under its configured `web_base_path`. Management defaults to loopback and has independent Host/origin configuration. Administrator sessions, MCP tokens, and short-lived transfer credentials remain distinct.
 
 Shared packages must not import server database code, API handlers, frontend code, ORMs, or server dependency containers.
 
 ## 7. Storage and update semantics
 
-SQLite is first, using a persistent local file with foreign keys, WAL, bounded busy waits, transactions, and deadlines. PostgreSQL is the second specific backend; arbitrary SQL compatibility is not promised.
+SQLite is first, using a persistent local file with foreign keys, WAL, bounded busy waits, transactions, and deadlines. PostgreSQL is the implemented second backend, with independent SQL and schema_version migrations; arbitrary SQL compatibility is not promised. Database advisory and local directory locks enforce one instance. Repeatable-read snapshots and queries use a pinned ownership session; losing it closes admission and stops the service. See the [PostgreSQL guide](postgresql.md) for backend selection, offline archives and acceptance.
 
 Hosts, identities, nodes, tags, encrypted credentials and metadata, policies and audit events are implemented. M3 adds administrator and session tables. Schema v5 gives independent tags an `id` primary key and unique `name`, with `node_tags(node_id,tag_id)` foreign-key relations. Unused tags persist; renaming retains IDs and associations, and deletion removes only those associations. Nodes use stable opaque IDs; editable addresses, ports, users, and aliases do not define identity. Imports record the mapping from old selectors.
 

@@ -31,6 +31,16 @@ func (s *Store) Save(ctx context.Context, expected uint64, v storage.Inventory, 
 		return fmt.Errorf("begin inventory transaction: %w", err)
 	}
 	defer rollback(tx, &retErr)
+	if err := saveInventory(ctx, tx, expected, v, sources); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit inventory (outcome requires reconciliation): %w", err)
+	}
+	return nil
+}
+
+func saveInventory(ctx context.Context, tx *sql.Tx, expected uint64, v storage.Inventory, sources []storage.Source) error {
 	v.Deleted = maps.Clone(v.Deleted)
 	if v.Deleted == nil {
 		v.Deleted = make(map[string]bool)
@@ -144,9 +154,6 @@ func (s *Store) Save(ctx context.Context, expected uint64, v storage.Inventory, 
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE policies SET config=? WHERE singleton=1", data); err != nil {
 		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit inventory (outcome requires reconciliation): %w", err)
 	}
 	return nil
 }

@@ -1,8 +1,8 @@
 # Roadmap and acceptance criteria
 
-The shared core uses a fixed remote version, and M2 implements SQLite and the standalone HTTP MCP server. See the [server guide](server.md), [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md). M3 Web management/deployment is implemented; PostgreSQL remains planned.
+The shared core uses a fixed remote version, and M2 implements SQLite and the standalone HTTP MCP server. See the [server guide](server.md), [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md). M3 Web management/deployment and M4 PostgreSQL are implemented.
 
-M0 bootstrap, M1 consumer integration and M2 standalone service are implemented. The upstream pin includes the published host-key algorithm negotiation repair; its source and acceptance are recorded in the dependency baseline. M4 describes planned product work and dependency order, not delivery dates.
+M0 bootstrap, M1 consumer integration and M2 standalone service are implemented. The upstream pin includes the published host-key algorithm negotiation repair; its source and acceptance are recorded in the dependency baseline. M4 implements independent PostgreSQL storage and explicit offline database migration; the sequence expresses dependency order.
 
 ## M0: repository and verifiable reuse baseline
 
@@ -54,13 +54,17 @@ The implementation includes SQLite v4 administrator/session and v5 independent-t
 
 Isolated SSH fixtures drive browser setup/login, CRUD, trust confirmation, real connections, edit conflicts, XSS escaping, tags/policy/audit, mobile layout and logout. Go integration tests cover live Web updates in existing MCP sessions, credential rotation, authentication isolation, migrations/restarts, and unknown-task/original-binding recovery from a backup copy. Production hosts and native Windows/macOS execution are not part of this evidence. Active operations track permits, not a replacement transfer journal. See the [Web console guide](web-console.md).
 
-## M4: PostgreSQL
+## M4: PostgreSQL (implemented)
 
 Owner: `xops-mcp`.
 
 Implement PostgreSQL-specific migrations and queries. Run shared business contracts against both backends and backend-specific locking/migration tests. Moving existing SQLite data requires explicit offline export/import and verification; changing the connection string does not migrate data.
 
 Acceptance: equivalent data behavior, rollback, optimistic concurrency, migration failure recovery, backup/restore, credential-key availability, and connection-pool cleanup.
+
+The implementation includes independent PostgreSQL v1/v2 migrations, JSONB/BYTEA/identity queries, repeatable-read snapshots, revision transactions, an advisory lock on a pinned physical session, a local journal lock, and shutdown on ownership-connection loss. Configuration selects `database_driver` and a private `postgres_dsn_file`; SQLite remains the default. Versioned encrypted `db-export`, `db-import` and `db-verify` archives preserve deployment identity, historical credentials/sources, tombstones, administrator and audit. Restore is atomic and requires an empty target; sessions are excluded and journals/keys are backed up separately.
+
+Shared storage contracts cover equivalent behavior, rollback, concurrent revisions, audit/sessions and all four archive directions. The same service, management API, HTTP MCP, real SSH/SFTP/ProxyJump and unknown-recovery tests run on both backends. PostgreSQL-specific tests cover empty/existing schemas, failed migration rollback/retry, future-schema rejection, ownership across directories, cancelled lock waits, wrong keys and pool/listener cleanup. CI supplies PostgreSQL 18 and a two-backend race matrix. See the [PostgreSQL guide](postgresql.md) for operation and backup. Evidence uses isolated Linux fixtures, excluding production hosts, native Windows/macOS and HA failover. Browser automation uses SQLite; PostgreSQL uses the same Go API acceptance suite.
 
 PostgreSQL remains single-instance. High availability, distributed scheduling, shared sessions, multi-tenancy, and a separate core repository are outside the delivery commitment.
 

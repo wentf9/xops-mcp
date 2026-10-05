@@ -30,6 +30,10 @@ Commands:
   migrate --config FILE                     Initialize or migrate the deployment
   serve --config FILE                       Serve authenticated HTTP MCP
   status --config FILE                      Inspect the offline deployment revision
+  db-export --config FILE --file FILE        Export an encrypted database archive
+  db-import --config FILE --file FILE [--apply]
+                                            Validate/restore into an empty database
+  db-verify --config FILE --file FILE        Verify complete database equivalence
   admin-init --config FILE --password-file FILE [--username admin]
   admin-reset --config FILE --password-file FILE
          [--password-stdin instead of --password-file]
@@ -55,7 +59,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	command := args[0]
 	switch command {
-	case "serve", "migrate", "status", "import", "recover", "admin-init", "admin-reset":
+	case "serve", "migrate", "status", "import", "recover", "admin-init", "admin-reset", "db-export", "db-import", "db-verify":
 	default:
 		return errors.New("unknown command; use xops-mcp help")
 	}
@@ -66,6 +70,12 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	var apply, dryRun, includeSecrets, replace, verify, cleanup, resolve bool
 	var username, passwordFile string
 	var passwordStdin bool
+	if strings.HasPrefix(command, "db-") {
+		flags.StringVar(&file, "file", "", "encrypted database archive file")
+		if command == "db-import" {
+			flags.BoolVar(&apply, "apply", false, "restore the validated archive into an empty database")
+		}
+	}
 	if command == "admin-init" || command == "admin-reset" {
 		flags.StringVar(&passwordFile, "password-file", "", "private file containing the administrator password")
 		flags.BoolVar(&passwordStdin, "password-stdin", false, "read the administrator password from stdin")
@@ -113,6 +123,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	if strings.HasPrefix(command, "db-") {
+		return databaseCommand(ctx, cfg, command, file, apply, stdout)
+	}
 	openHost := server.OpenExistingHost
 	if command == "migrate" {
 		openHost = server.OpenHost
