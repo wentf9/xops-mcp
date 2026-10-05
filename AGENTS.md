@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-This repository is the standalone XOps MCP server product. Read `docs/architecture.md` and `docs/roadmap.md` before implementation. M2 provides the SQLite-backed HTTP server, offline import/recovery commands, and persistent core adapters. M3 adds embedded Web management, administrator authentication, live API edits, and deployment examples. M4 adds PostgreSQL and encrypted offline database export/import/verification. Both backends remain single-instance with a local transfer journal. Administrator authentication now uses 15-minute stateless JWTs and JWE password requests over configurable HTTP/HTTPS; SQLite v6 and PostgreSQL v3 remove legacy session tables. See `docs/admin-auth.md`.
+This repository is the standalone XOps MCP server product. Read `docs/development/architecture.md` and `docs/development/roadmap.md` before implementation. M2 provides the SQLite-backed HTTP server, offline import/recovery commands, and persistent core adapters. M3 adds embedded Web management, administrator authentication, live API edits, and deployment examples. M4 adds PostgreSQL and encrypted offline database export/import/verification. Both backends remain single-instance with a local transfer journal. Administrator authentication now uses 15-minute stateless JWTs and JWE password requests over configurable HTTP/HTTPS; SQLite v6 and PostgreSQL v3 remove legacy session tables. See `docs/development/admin-auth.md`.
 
 ## Dependency ownership
 
@@ -28,7 +28,13 @@ This repository is the standalone XOps MCP server product. Read `docs/architectu
 - Before every code push or PR, pass `go build ./...`, `go test ./...`, and `golangci-lint run ./...` locally.
 - Use golangci-lint v2; run `golangci-lint config verify` after changing its configuration.
 - Run relevant race/lifecycle tests. Distinguish protocol discovery from real SSH/SFTP validation.
-- Run the same business tests with `XOPS_TEST_BACKEND=sqlite` and `postgres`; PostgreSQL tests require `XOPS_TEST_POSTGRES_DSN` pointing to a disposable server with CREATEDB permission. See `docs/postgresql.md`.
+- Run the same business tests with `XOPS_TEST_BACKEND=sqlite` and `postgres`; PostgreSQL tests require `XOPS_TEST_POSTGRES_DSN` pointing to a disposable server with CREATEDB permission. See `docs/development/build-testing.md`.
 - Update corresponding Chinese and English documentation when changing described behavior.
 - Use conventional commits: `feat:`, `fix:`, `chore:`, `ci:`, `docs:`, or `test:`.
 - Do not infer authorization to modify or publish the upstream repository from work requested here.
+
+## Documentation
+
+- Keep operator instructions in `docs/user/` and `docs/en/user/`; use task-oriented language without milestones, source ownership, fixtures, test evidence, API internals, or implementation status.
+- Keep build, test, API, architecture, and roadmap material in `docs/development/` and `docs/en/development/`.
+- Validate documented commands using the same executable or image referenced by the instructions. `go build ./...` does not refresh `bin/xops-mcp`; an explicit `-o` build does. Container instructions must use the container image for key generation and administration.

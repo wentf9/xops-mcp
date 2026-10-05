@@ -1,8 +1,8 @@
 # Architecture and cross-repository reuse
 
-The shared core is integrated through a fixed remote version. Normal CI covers core consumers and dependency boundaries. M2 SQLite, the standalone HTTP server and M3 Web management are implemented; M4 PostgreSQL is implemented; see the [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md).
+The shared core is integrated through a fixed remote version. Normal CI covers core consumers and dependency boundaries. M2 SQLite, the standalone HTTP server and M3 Web management are implemented; M4 PostgreSQL is implemented; see the [dependency baseline](reuse-baseline.md) and [interface contracts](interface-decoupling.md).
 
-Status: shared interfaces and the M2 standalone service are implemented. Web management and administrator sessions are implemented; M4 PostgreSQL is implemented. See the [server guide](server.md).
+Status: shared interfaces and the M2 standalone service are implemented. Web management and administrator JWT authentication are implemented; M4 PostgreSQL is implemented. See the [server guide](../user/install.md).
 
 Shared implementations now live in the independently extractable `xops-cli/core/` subtree, with direct CLI consumption and application-owned host adapters. All consumer production and test imports use core; old facade probes are removed. See [interface decoupling](interface-decoupling.md) for detailed contracts and acceptance.
 
@@ -48,7 +48,7 @@ Do not import upstream `cmd`, `cmd/sftpshell`, `pkg/tui`, or upstream `internal`
 
 ## 4. Verified interfaces and host responsibilities
 
-The fixed source and validation scope are recorded in the [baseline](../reuse-baseline.md).
+The fixed source and validation scope are recorded in the [baseline](reuse-baseline.md).
 
 - `core/mcp/runtime.NewRuntime` accepts State, Gate, Backend factory and Audit through `WithDependencies`, including resource cleanup on partial construction failure.
 - `core/mcp/state.Coordinator` supplies coherent snapshots, publication barriers and atomic admission. Ordinary edits preserve admitted targets; disablement and revocation cancel affected cancellable work.
@@ -74,7 +74,7 @@ Implemented contracts are StateSource, ExecutionGate, Backend, AuditSink, and th
 
 ```text
 cmd/xops-mcp/              entry point and lifecycle
-internal/api/             management API and administrator sessions
+internal/api/             management API and administrator authentication
 internal/service/         inventory, credentials, policy, and operations
 internal/adapters/xops/    shared-core adapters
 internal/storage/         business repositories and transactions
@@ -95,7 +95,7 @@ Shared packages must not import server database code, API handlers, frontend cod
 
 ## 7. Storage and update semantics
 
-SQLite is first, using a persistent local file with foreign keys, WAL, bounded busy waits, transactions, and deadlines. PostgreSQL is the implemented second backend, with independent SQL and schema_version migrations; arbitrary SQL compatibility is not promised. Database advisory and local directory locks enforce one instance. Repeatable-read snapshots and queries use a pinned ownership session; losing it closes admission and stops the service. See the [PostgreSQL guide](postgresql.md) for backend selection, offline archives and acceptance.
+SQLite is first, using a persistent local file with foreign keys, WAL, bounded busy waits, transactions, and deadlines. PostgreSQL is the implemented second backend, with independent SQL and schema_version migrations; arbitrary SQL compatibility is not promised. Database advisory and local directory locks enforce one instance. Repeatable-read snapshots and queries use a pinned ownership session; losing it closes admission and stops the service. See the [PostgreSQL guide](../user/postgresql.md) for backend selection, offline archives and acceptance.
 
 Hosts, identities, nodes, tags, encrypted credentials and metadata, policies and audit events are implemented. M3 added administrator and legacy session tables. SQLite v6 / PostgreSQL v3 remove admin_sessions in favor of stateless JWTs. Schema v5 gives independent tags an `id` primary key and unique `name`, with `node_tags(node_id,tag_id)` foreign-key relations. Unused tags persist; renaming retains IDs and associations, and deletion removes only those associations. Nodes use stable opaque IDs; editable addresses, ports, users, and aliases do not define identity. Imports record the mapping from old selectors.
 

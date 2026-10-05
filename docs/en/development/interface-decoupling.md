@@ -1,6 +1,6 @@
 # Shared interfaces and server integration
 
-Status: upstream D1–D5 and D6 independent extraction are implemented. This repository pins a remotely downloadable core commit that passed acceptance without replacements. Core tests have moved from testdata to internal/coreconsumer and run in normal CI with dependency checks covering the entire module. See the [dependency baseline](../reuse-baseline.md) for the exact pin and PR links. M2 database adapters and product entry points are implemented; M3 Web management consumes the same service/coordinator contracts.
+Status: upstream D1–D5 and D6 independent extraction are implemented. This repository pins a remotely downloadable core commit that passed acceptance without replacements. Core tests have moved from testdata to internal/coreconsumer and run in normal CI with dependency checks covering the entire module. See the [dependency baseline](reuse-baseline.md) for the exact pin and PR links. M2 database adapters and product entry points are implemented; M3 Web management consumes the same service/coordinator contracts.
 
 The authoritative shared-source design is `docs/en/development/shared-core-decoupling.md` in [xops-cli](https://github.com/wentf9/xops-cli). This document defines consumer obligations. Database injection alone does not establish an independently maintainable shared core.
 

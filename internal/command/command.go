@@ -50,7 +50,7 @@ Commands:
 
 Offline commands require the service to be stopped. Import previews do not
 change business data. Node IDs and credentials are never loaded from personal
-CLI/OpenSSH configuration. See docs/server.md for deployment and import formats.
+CLI/OpenSSH configuration. See docs/user/README.md for deployment and import instructions.
 `
 
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) (retErr error) {

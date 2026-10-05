@@ -1,6 +1,6 @@
 # Roadmap and acceptance criteria
 
-The shared core uses a fixed remote version, and M2 implements SQLite and the standalone HTTP MCP server. See the [server guide](server.md), [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md). M3 Web management/deployment and M4 PostgreSQL are implemented.
+The shared core uses a fixed remote version, and M2 implements SQLite and the standalone HTTP MCP server. See the [server guide](../user/install.md), [dependency baseline](reuse-baseline.md) and [interface contracts](interface-decoupling.md). M3 Web management/deployment and M4 PostgreSQL are implemented.
 
 M0 bootstrap, M1 consumer integration and M2 standalone service are implemented. The upstream pin includes the published host-key algorithm negotiation repair; its source and acceptance are recorded in the dependency baseline. M4 implements independent PostgreSQL storage and explicit offline database migration; the sequence expresses dependency order.
 
@@ -14,7 +14,7 @@ Owner: `xops-mcp`.
 - Dependency checks excluding CLI/TUI packages and documentation of remaining configuration/credential coupling.
 - Ownership, upstream contract changes, storage boundaries, and phased acceptance criteria.
 
-Evidence: [dependency baseline](../reuse-baseline.md). This phase provides no server executable.
+Evidence: [dependency baseline](reuse-baseline.md). This phase provides no server executable.
 
 ## M1: server-facing shared-core interfaces (integrated)
 
@@ -50,9 +50,9 @@ Add administrator bootstrap/login/JWT expiry and same-origin protection; invento
 
 Acceptance: browser CRUD, concurrent edit conflicts, MCP visibility after Web edits, secret redaction, administrator/MCP authentication separation, persistence after restart, and no accidental retargeting of in-flight work.
 
-The implementation includes SQLite v4 administrator/session and v5 independent-tag/primary-key migrations, Web/offline bootstrap, subsequently upgraded 15-minute stateless JWTs, configurable HTTP/HTTPS and JWE password encryption, same-origin protection, If-Match management APIs, JWT/revision-bound host-key confirmation, authentication-only SSH tests, cursor audit queries and active-permit views. Management and MCP use separate listeners, with a fixed configurable prefix for the management page, assets and APIs, with JWTs bound to that prefix. Web assets are embedded directly; deployment examples cover Docker/Compose, systemd, Nginx and offline backup/restore.
+The implementation includes SQLite v4 administrator/session and v5 independent-tag/primary-key migrations, Web/offline bootstrap, 15-minute stateless JWTs, configurable HTTP/HTTPS and JWE password encryption, same-origin protection, If-Match management APIs, JWT/revision-bound host-key confirmation, authentication-only SSH tests, cursor audit queries and active-permit views. Management and MCP use separate listeners, with a fixed configurable prefix for the management page, assets and APIs, with JWTs bound to that prefix. Web assets are embedded directly; deployment examples cover Docker/Compose, systemd, Nginx and offline backup/restore.
 
-Isolated SSH fixtures drive browser setup/login, CRUD, trust confirmation, real connections, edit conflicts, XSS escaping, tags/policy/audit, mobile layout and logout. Go integration tests cover live Web updates in existing MCP sessions, credential rotation, authentication isolation, migrations/restarts, and unknown-task/original-binding recovery from a backup copy. Production hosts and native Windows/macOS execution are not part of this evidence. Active operations track permits, not a replacement transfer journal. See the [Web console guide](web-console.md).
+Isolated SSH fixtures drive browser setup/login, CRUD, trust confirmation, real connections, edit conflicts, XSS escaping, tags/policy/audit, mobile layout and logout. Go integration tests cover live Web updates in existing MCP sessions, credential rotation, authentication isolation, migrations/restarts, and unknown-task/original-binding recovery from a backup copy. Production hosts and native Windows/macOS execution are not part of this evidence. Active operations track permits, not a replacement transfer journal. See the [Web console guide](../user/console.md).
 
 ## M4: PostgreSQL (implemented)
 
@@ -64,13 +64,13 @@ Acceptance: equivalent data behavior, rollback, optimistic concurrency, migratio
 
 The implementation includes independent PostgreSQL v1/v2 migrations, JSONB/BYTEA/identity queries, repeatable-read snapshots, revision transactions, an advisory lock on a pinned physical session, a local journal lock, and shutdown on ownership-connection loss. Configuration selects `database_driver` and a private `postgres_dsn_file`; SQLite remains the default. Versioned encrypted `db-export`, `db-import` and `db-verify` archives preserve deployment identity, historical credentials/sources, tombstones, administrator and audit. Restore is atomic and requires an empty target; sessions are excluded and journals/keys are backed up separately.
 
-Shared storage contracts cover equivalent behavior, rollback, concurrent revisions, audit/administrator credentials and all four archive directions. The same service, management API, HTTP MCP, real SSH/SFTP/ProxyJump and unknown-recovery tests run on both backends. PostgreSQL-specific tests cover empty/existing schemas, failed migration rollback/retry, future-schema rejection, ownership across directories, cancelled lock waits, wrong keys and pool/listener cleanup. CI supplies PostgreSQL 18 and a two-backend race matrix. See the [PostgreSQL guide](postgresql.md) for operation and backup. Evidence uses isolated Linux fixtures, excluding production hosts, native Windows/macOS and HA failover. Browser automation uses SQLite; PostgreSQL uses the same Go API acceptance suite.
+Shared storage contracts cover equivalent behavior, rollback, concurrent revisions, audit/administrator credentials and all four archive directions. The same service, management API, HTTP MCP, real SSH/SFTP/ProxyJump and unknown-recovery tests run on both backends. PostgreSQL-specific tests cover empty/existing schemas, failed migration rollback/retry, future-schema rejection, ownership across directories, cancelled lock waits, wrong keys and pool/listener cleanup. CI supplies PostgreSQL 18 and a two-backend race matrix. See the [PostgreSQL guide](../user/postgresql.md) for operation and backup. Evidence uses isolated Linux fixtures, excluding production hosts, native Windows/macOS and HA failover. Browser automation uses SQLite; PostgreSQL uses the same Go API acceptance suite.
 
 PostgreSQL remains single-instance. High availability, distributed scheduling, shared sessions, multi-tenancy, and a separate core repository are outside the delivery commitment.
 
 ## Administrator authentication evolution (implemented)
 
-Administrators use 15-minute JWTs with client-side logout and natural expiry after password changes. Verification never accesses session storage. Setup, login and password changes use standard JWE over configurable HTTP/HTTPS; 90-second signed challenges bind purpose and the password-change JWT. SQLite v6 / PostgreSQL v3 remove legacy sessions. Authentication instances share deployment ID, prefix and external keys; database locks, runtime state and the journal still keep the product single-instance. See the [authentication guide](admin-auth.md) for configuration, upgrade and acceptance.
+Administrators use 15-minute JWTs with client-side logout and natural expiry after password changes. Verification never accesses session storage. Setup, login and password changes use standard JWE over configurable HTTP/HTTPS; 90-second signed challenges bind purpose and the password-change JWT. SQLite v6 / PostgreSQL v3 remove legacy sessions. Authentication instances share deployment ID, prefix and external keys; database locks, runtime state and the journal still keep the product single-instance. See [authentication contracts](admin-auth.md) for details and acceptance.
 
 ## Continuing release requirements
 

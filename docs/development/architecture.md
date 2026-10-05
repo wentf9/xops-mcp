@@ -2,7 +2,7 @@
 
 共享 core 已通过固定远端版本接入；core 消费与依赖边界检查已纳入常规 CI。M2 SQLite 与独立 HTTP 服务及 M3 Web 管理已实现，M4 PostgreSQL 已实现，版本与证据见[依赖基线](reuse-baseline.md)，接入契约见[接口解耦](interface-decoupling.md)。
 
-状态：共享接口、独立服务、Web、管理 API 与管理员会话已实现；PostgreSQL 和离线数据库迁移已实现。运行说明见[服务指南](server.md)。
+状态：共享接口、独立服务、Web、管理 API 与管理员 JWT 认证已实现；PostgreSQL 和离线数据库迁移已实现。运行说明见[服务指南](../user/install.md)。
 
 上游公共实现已收敛到可独立抽取的 `xops-cli/core/`，CLI 直接导入 core，必要的宿主装配留在应用层。消费者的所有生产和测试代码仅使用上游 core 包；旧入口探针已删除。详细接口、更新一致性和验收见[公共接口解耦](interface-decoupling.md)。
 
@@ -43,7 +43,7 @@ flowchart TD
 | MCP 工具 schema、处理器、护栏与协议约束 | `xops-cli/core/mcp` | 通过公共 ports 装配 `runtime` 和 `sshexec` |
 | HTTP 文件传输、幂等与恢复状态机 | `xops-cli/core/mcp/transfer` | 首期沿用独立本地 journal；后续仅通过明确的存储接口扩展 |
 | 本地 YAML、CLI 凭据库、TUI、命令入口 | `xops-cli` | CLI 自己使用；服务端不调用命令或启动子进程包装 CLI |
-| Web、管理 API、管理员会话、数据库迁移 | `xops-mcp` | 服务端业务层直接拥有 |
+| Web、管理 API、管理员认证、数据库迁移 | `xops-mcp` | 服务端业务层直接拥有 |
 | 数据库到共享内核的转换与凭据解析 | `xops-mcp/internal/adapters/xops` | 消费方实现接口，禁止共享内核回调服务端具体包 |
 | SQLite/PostgreSQL 实体与查询 | `xops-mcp/internal/storage`（SQLite 与 PostgreSQL 已实现） | 不作为 MCP schema 或 CLI 数据结构公开 |
 
@@ -79,7 +79,7 @@ flowchart TD
 
 ```text
 cmd/xops-mcp/             进程入口、配置、信号与生命周期装配
-internal/api/            Web 管理 API 与管理员会话
+internal/api/            Web 管理 API 与管理员认证
 internal/service/        节点、身份、凭据、策略及运行操作
 internal/adapters/xops/  共享内核的配置、凭据、执行与审计适配器
 internal/storage/       业务存储接口与事务边界
@@ -100,7 +100,7 @@ web/                    Web 源码与嵌入资源
 
 ## 7. 数据持久化与更新语义
 
-SQLite 为首个实现，文件位于持久化本地数据目录，启用外键、WAL 和有界 busy 等待；应用层仍需事务、超时和并发控制。PostgreSQL 是已实现的第二种后端，使用独立的 schema_version 和 SQL，不承诺任意 SQL 数据库兼容。部署级 advisory lock 与本地目录锁共同限制单实例；读事务使用 repeatable read，查询绑定同一物理所有权会话，连接丢失后关闭准入并退出服务。后端选择、离线归档及验收见 [PostgreSQL 指南](postgresql.md)。
+SQLite 为首个实现，文件位于持久化本地数据目录，启用外键、WAL 和有界 busy 等待；应用层仍需事务、超时和并发控制。PostgreSQL 是已实现的第二种后端，使用独立的 schema_version 和 SQL，不承诺任意 SQL 数据库兼容。部署级 advisory lock 与本地目录锁共同限制单实例；读事务使用 repeatable read，查询绑定同一物理所有权会话，连接丢失后关闭准入并退出服务。后端选择、离线归档及验收见 [PostgreSQL 指南](../user/postgresql.md)。
 
 已实现 hosts、identities、nodes、tags、credential metadata/ciphertext、policies 和 audit events；M3 增加 admin 和旧会话表；后续 SQLite v6 / PostgreSQL v3 已移除 admin_sessions，认证改为 JWT；schema v5 将标签改为独立的 `tags(id,name)` 记录，节点通过 `node_tags(node_id,tag_id)` 外键关联。标签可独立创建，重命名保持主键和关联，删除时仅解除节点关联。节点使用稳定的不透明 ID，地址、端口、用户名和别名均可编辑；导入时记录旧 selector 到新 ID 的映射。
 
