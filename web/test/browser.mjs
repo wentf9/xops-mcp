@@ -6,6 +6,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 
+const useTLS = !process.argv.includes("--http");
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const work = await mkdtemp(resolve(tmpdir(), "xops-browser-"));
 const artifacts = resolve(root, "web/test-results");
@@ -30,6 +31,7 @@ try {
   );
   fixture = spawn(resolve(work, "fixture"), [], {
     cwd: root,
+    env: { ...process.env, XOPS_TEST_WEB_TLS: useTLS ? "1" : "0" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let diagnostics = "";
@@ -57,13 +59,29 @@ try {
     ...(process.env.XOPS_TEST_CHROME
       ? { executablePath: process.env.XOPS_TEST_CHROME }
       : {}),
-    args: ["--no-sandbox"],
+    args: ["--no-sandbox", "--no-proxy-server", "--host-resolver-rules=MAP xops-http.test 127.0.0.1"],
   });
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
+    // The fixture generates its own isolated certificate, never a deployed key.
+    ignoreHTTPSErrors: true,
   });
+  const request = (method, raw, options = {}) => {
+    const target = new URL(raw), host = target.host;
+    if (target.hostname === "xops-http.test") target.hostname = "127.0.0.1";
+    return context.request[method](target.href, { ...options, headers: { ...options.headers, Host: host } });
+  };
   page = await context.newPage();
   const errors = [];
+  const encryptedRequests = [];
+  page.on("request", request => {
+    if (/\/auth\/(login|setup|password)$/.test(new URL(request.url()).pathname) && ["POST", "PUT"].includes(request.method())) {
+      const body = request.postDataJSON();
+      assert.deepEqual(Object.keys(body), ["ciphertext"]);
+      assert.equal(body.ciphertext.split(".").length, 5);
+      encryptedRequests.push(request.url());
+    }
+  });
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("https://external.test/", (route) =>
     route.fulfill({
@@ -78,12 +96,17 @@ try {
       page.getByRole("link", { name: "Open XOps console" }).click(),
     ]);
     const headers = await response.allHeaders();
-    assert.equal(headers["x-fixture-fetch-site"], "cross-site");
-    assert.equal(headers["x-fixture-fetch-mode"], "navigate");
-    assert.equal(headers["x-fixture-fetch-dest"], "document");
+    // Fetch Metadata is omitted by browsers for ordinary HTTP origins.
+    if (useTLS) {
+      assert.equal(headers["x-fixture-fetch-site"], "cross-site");
+      assert.equal(headers["x-fixture-fetch-mode"], "navigate");
+      assert.equal(headers["x-fixture-fetch-dest"], "document");
+    }
     assert.equal(response.status(), 200);
   };
   await openFromExternalLink();
+  assert.equal(await page.evaluate(() => isSecureContext), useTLS);
+  assert.equal(await page.evaluate(() => !!globalThis.crypto?.subtle), useTLS);
   await page.getByRole("heading", { name: "初始化管理员" }).waitFor();
   await page.screenshot({
     path: resolve(artifacts, "setup.png"),
@@ -96,19 +119,15 @@ try {
   await page.getByLabel("初始化凭据", { exact: true }).fill(info.setupToken);
   await page.getByRole("button", { name: "创建管理员", exact: true }).click();
   await page.getByRole("heading", { name: "节点总览", exact: true }).waitFor();
-  const cookies = await context.cookies(info.url + "/api/v1/inventory");
-  const sessionCookie = cookies.find((cookie) =>
-    cookie.name.startsWith("xops_admin_"),
-  );
-  assert.equal(sessionCookie.path, new URL(info.url).pathname + "/api/v1");
-  assert.equal(sessionCookie.httpOnly, true);
-  assert.equal(sessionCookie.sameSite, "Strict");
+  const token = async () => page.evaluate(() => sessionStorage.getItem("xops.admin.token:" + new URL("api/v1/", document.baseURI).href));
+  assert.equal((await token()).split(".").length, 3);
+  assert.equal((await context.cookies(info.url)).filter(cookie => cookie.name.startsWith("xops_admin_")).length, 0);
   for (const url of [
     info.mcpURL + "/console/api/v1/inventory",
     info.mcpURL + "/console/",
     info.url + "/mcp",
   ]) {
-    const response = await context.request.get(url);
+    const response = await request("get", url);
     assert.equal(response.status(), 404);
     await response.dispose();
   }
@@ -287,6 +306,10 @@ try {
   await form().getByLabel("名称", { exact: true }).fill("stale-name");
   const other = await context.newPage();
   await other.goto(info.url);
+  // A new tab has its own sessionStorage and authenticates explicitly.
+  await other.getByLabel("用户名", { exact: true }).fill(info.username);
+  await other.getByLabel("密码", { exact: true }).fill(initialPassword);
+  await other.getByRole("button", { name: "登录控制台", exact: false }).click();
   await other.getByRole("heading", { name: "节点总览", exact: true }).waitFor();
   await other.getByRole("button", { name: "编辑", exact: true }).click();
   await other
@@ -325,8 +348,9 @@ try {
   await form().getByLabel("名称", { exact: true }).fill(unicodeName);
   await save();
   assert.ok((await page.locator("body").innerText()).includes(unicodeName));
-  const inventoryResponse = await context.request.get(
+  const inventoryResponse = await request("get",
     info.url + "/api/v1/inventory",
+    { headers: { Authorization: "Bearer " + await token() } },
   );
   assert.equal(inventoryResponse.status(), 200);
   const inventory = await inventoryResponse.json();
@@ -370,23 +394,25 @@ try {
     0,
   );
   // Reproduce an imported policy whose approval_threshold was omitted.
-  const policyInventoryResponse = await context.request.get(
+  const policyInventoryResponse = await request("get",
     info.url + "/api/v1/inventory",
+    { headers: { Authorization: "Bearer " + await token() } },
   );
   assert.equal(policyInventoryResponse.status(), 200);
   const policyInventory = await policyInventoryResponse.json();
-  const sessionResponse = await context.request.get(
+  const sessionResponse = await request("get",
     info.url + "/api/v1/auth/session",
+    { headers: { Authorization: "Bearer " + await token() } },
   );
   assert.equal(sessionResponse.status(), 200);
-  const adminSession = await sessionResponse.json();
+  assert.equal((await sessionResponse.json()).authenticated, true);
   await sessionResponse.dispose();
-  const unsetPolicyResponse = await context.request.put(
+  const unsetPolicyResponse = await request("put",
     info.url + "/api/v1/policy",
     {
       headers: {
         Origin: new URL(info.url).origin,
-        "X-CSRF-Token": adminSession.csrf,
+        Authorization: "Bearer " + await token(),
         "If-Match": policyInventoryResponse.headers().etag,
       },
       data: {
@@ -412,8 +438,9 @@ try {
     .locator("#notices")
     .getByText("策略已更新", { exact: true })
     .waitFor();
-  const savedPolicyResponse = await context.request.get(
+  const savedPolicyResponse = await request("get",
     info.url + "/api/v1/inventory",
+    { headers: { Authorization: "Bearer " + await token() } },
   );
   assert.equal(savedPolicyResponse.status(), 200);
   const savedPolicy = (await savedPolicyResponse.json()).policy;
@@ -458,8 +485,11 @@ try {
   await openFromExternalLink();
   await page.getByRole("heading", { name: "欢迎回来" }).waitFor();
   assert.deepEqual(errors, []);
+  assert(encryptedRequests.some(url => url.endsWith("/login")));
+  assert(encryptedRequests.some(url => url.endsWith("/setup")));
+  assert(encryptedRequests.some(url => url.endsWith("/password")));
   console.log(
-    "Browser acceptance passed: prefixed console/assets/API/cookies, isolated ports, external links, Unicode password setup/login/change, direct and independent host-key confirmation, credential/identity/node/tag CRUD, real SSH test, revision conflict, XSS escaping, policy, audit, responsive layout and logout",
+    `Browser acceptance passed (${useTLS ? "HTTPS / Web Crypto" : "HTTP / embedded crypto"}): prefixed console/assets/API/JWT, isolated ports, external links, Unicode password setup/login/change, direct and independent host-key confirmation, credential/identity/node/tag CRUD, real SSH test, revision conflict, XSS escaping, policy, audit, responsive layout and logout`,
   );
 } catch (error) {
   if (page) {

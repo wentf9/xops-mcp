@@ -3,7 +3,10 @@ package command_test
 import (
 	"bytes"
 	"context"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -268,7 +271,15 @@ func TestOfflineAdministratorInitializationAndReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer testutil.Close(t, host)
-	manager, err := adminauth.New(host.Store, 0)
+	jwtKey, _, err := cfg.AdminKeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := adminauth.NewTokens(jwtKey, host.Service.Coordinator.DomainID(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := adminauth.New(host.Store, 0, tokens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,5 +288,43 @@ func TestOfflineAdministratorInitializationAndReset(t *testing.T) {
 	}
 	if _, err := manager.Login(t.Context(), "admin", "synthetic-reset-admin-password"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRSARequestEncryptionKeyGeneration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "admin.encryption.key")
+	if _, err := run(t, "keygen", "--type", "rsa", "--out", path); err != nil {
+		t.Fatal(err)
+	}
+	data, err := config.ReadFile(path, 16<<10, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, rest := pem.Decode(data)
+	if block == nil || block.Type != "PRIVATE KEY" || len(bytes.TrimSpace(rest)) != 0 {
+		t.Fatal("RSA keygen did not create PKCS8 PEM")
+	}
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if !ok || rsaKey.N.BitLen() != 3072 {
+		t.Fatal("RSA keygen strength/type mismatch")
+	}
+	before := bytes.Clone(data)
+	if _, err := run(t, "keygen", "--out", path); err == nil {
+		t.Fatal("keygen overwrote RSA key")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("existing encryption key changed", err)
+	}
+	invalid := filepath.Join(t.TempDir(), "invalid.key")
+	if _, err := run(t, "keygen", "--type", "unsupported", "--out", invalid); err == nil {
+		t.Fatal("unsupported key type accepted")
+	}
+	if _, err := os.Stat(invalid); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("invalid keygen created a file")
 	}
 }

@@ -18,6 +18,11 @@ import (
 )
 
 type Config struct {
+	AdminJWTKeyFile         string        `yaml:"admin_jwt_key_file"`
+	AdminEncryptionKeyFile  string        `yaml:"admin_encryption_key_file"`
+	WebTLSCertFile          string        `yaml:"web_tls_cert_file"`
+	WebTLSKeyFile           string        `yaml:"web_tls_key_file"`
+	WebTLSEnabled           bool          `yaml:"web_tls_enabled"`
 	DatabaseDriver          string        `yaml:"database_driver"`
 	PostgresDSNFile         string        `yaml:"postgres_dsn_file"`
 	DataDir                 string        `yaml:"data_dir"`
@@ -59,7 +64,7 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	for _, value := range []*string{&c.DataDir, &c.MasterKeyFile, &c.MCPTokenFile, &c.AdminBootstrapTokenFile, &c.PostgresDSNFile} {
+	for _, value := range []*string{&c.DataDir, &c.MasterKeyFile, &c.MCPTokenFile, &c.AdminBootstrapTokenFile, &c.PostgresDSNFile, &c.AdminJWTKeyFile, &c.AdminEncryptionKeyFile, &c.WebTLSCertFile, &c.WebTLSKeyFile} {
 		if *value != "" && !filepath.IsAbs(*value) {
 			*value = filepath.Join(base, *value)
 		}
@@ -67,12 +72,17 @@ func Load(path string) (Config, error) {
 	if err := c.ValidateDatabase(); err != nil {
 		return c, err
 	}
-	relative, err := filepath.Rel(c.DataDir, c.MasterKeyFile)
-	if err != nil {
-		return c, err
-	}
-	if relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return c, errors.New("master key must be stored outside data_dir")
+	for _, keyFile := range []string{c.MasterKeyFile, c.AdminJWTKeyFile, c.AdminEncryptionKeyFile} {
+		if keyFile == "" {
+			continue
+		}
+		relative, err := filepath.Rel(c.DataDir, keyFile)
+		if err != nil {
+			return c, err
+		}
+		if relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return c, errors.New("deployment keys must be stored outside data_dir")
+		}
 	}
 	if c.ToolTimeout <= 0 || c.ShutdownTimeout <= 0 {
 		return c, errors.New("server timeouts must be positive")

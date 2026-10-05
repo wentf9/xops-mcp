@@ -93,14 +93,14 @@ func TestIndependentHostKeyEnrollmentAndJumpRotation(t *testing.T) {
 	confirm(otherID, token, 409)
 	token = preview(hostID, public)
 	// Another authenticated session cannot consume this session's preview.
-	jar, csrf := p.client.Jar, p.csrf
+	jar, originalToken := p.client.Jar, p.token
 	p.client.Jar, err = cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.login(adminPassword)
 	confirm(hostID, token, 409)
-	p.client.Jar, p.csrf = jar, csrf
+	p.client.Jar, p.token = jar, originalToken
 	confirm(hostID, token, 200)
 	confirm(hostID, token, 409)
 	stale := preview(hostID, public)

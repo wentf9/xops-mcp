@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/wentf9/xops-cli/core/mcp/ports"
 	"github.com/wentf9/xops-mcp/internal/adapters/xops"
@@ -76,14 +75,11 @@ func seed(t *testing.T, s storage.Database, vault *secure.Vault) storage.Backup 
 	rotated := importer.Document{Credentials: map[string]importer.Credential{"login": {Kind: "password", Password: "rotated-fixture-password"}}}
 	v, _ = testutil.Plan(t, s, vault, rotated)
 	save(t, s, v)
-	auth, err := adminauth.New(s, 4)
+	auth, err := adminauth.New(s, 4, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := auth.Initialize(t.Context(), "admin", "fixture-administrator-password"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := auth.Login(t.Context(), "admin", "fixture-administrator-password"); err != nil {
 		t.Fatal(err)
 	}
 	for _, e := range []ports.AuditEvent{{OperationID: "one", NodeID: report.NodeIDs["peer"], Outcome: "executed", Command: "secret", Paths: []string{"secret"}}, {OperationID: "two", NodeIDs: []string{report.NodeIDs["peer"]}, Outcome: "denied", Error: "secret", Details: "secret"}} {
@@ -200,42 +196,27 @@ func TestRepositories(t *testing.T) {
 					t.Fatal("cancelled operation wrote data")
 				}
 			})
-			t.Run("session-limit-expiry-and-revocation", func(t *testing.T) {
+			t.Run("administrator-password-version", func(t *testing.T) {
 				s, _ := open(t, backend)
 				if err := s.InitializeAdmin(t.Context(), storage.Admin{Username: "admin", PasswordHash: []byte("fixture"), Version: "v1"}); err != nil {
 					t.Fatal(err)
 				}
-				if err := s.InitializeAdmin(t.Context(), storage.Admin{Username: "other", PasswordHash: []byte("fixture"), Version: "v2"}); !errors.Is(err, storage.ErrAdminExists) {
-					t.Fatal("admin replaced", err)
-				}
-				now := time.Now()
-				digest := make([]byte, 32)
-				for i := range 64 {
-					digest = bytes.Repeat([]byte{byte(i)}, 32)
-					if err := s.CreateSession(t.Context(), storage.Session{Digest: digest, AdminVersion: "v1", ExpiresAt: now.Add(time.Hour)}); err != nil {
-						t.Fatal(err)
-					}
-				}
-				if err := s.CreateSession(t.Context(), storage.Session{Digest: bytes.Repeat([]byte{65}, 32), AdminVersion: "v1", ExpiresAt: now.Add(time.Hour)}); !errors.Is(err, storage.ErrConflict) {
-					t.Fatal("session limit bypassed", err)
-				}
-				if _, err := s.Session(t.Context(), digest, now.Add(2*time.Hour)); !errors.Is(err, storage.ErrNotFound) {
-					t.Fatal("expired session accepted")
+				if err := s.InitializeAdmin(t.Context(), storage.Admin{Username: "other", PasswordHash: []byte("other"), Version: "v2"}); !errors.Is(err, storage.ErrAdminExists) {
+					t.Fatal("administrator replaced", err)
 				}
 				if err := s.ChangeAdminPassword(t.Context(), "stale", []byte("new"), "v2"); !errors.Is(err, storage.ErrConflict) {
-					t.Fatal("stale password changed")
+					t.Fatal("stale password update succeeded", err)
 				}
-				if _, err := s.Session(t.Context(), digest, now); err != nil {
-					t.Fatal("failed password edit revoked session")
+				a, err := s.Admin(t.Context())
+				if err != nil || a.Version != "v1" || string(a.PasswordHash) != "fixture" {
+					t.Fatal("failed password update changed administrator", err)
 				}
 				if err := s.ChangeAdminPassword(t.Context(), "v1", []byte("new"), "v2"); err != nil {
 					t.Fatal(err)
 				}
-				if _, err := s.Session(t.Context(), digest, now); !errors.Is(err, storage.ErrNotFound) {
-					t.Fatal("password reset retained session")
-				}
-				if err := s.CreateSession(t.Context(), storage.Session{Digest: digest, AdminVersion: "v1", ExpiresAt: now.Add(time.Hour)}); !errors.Is(err, storage.ErrConflict) {
-					t.Fatal("login race restored stale session")
+				a, err = s.Admin(t.Context())
+				if err != nil || a.Username != "admin" || a.Version != "v2" || string(a.PasswordHash) != "new" {
+					t.Fatal("password update did not persist", err)
 				}
 			})
 		})
@@ -314,7 +295,11 @@ func TestCrossBackendArchive(t *testing.T) {
 				if err := target.Restore(t.Context(), decoded); err == nil {
 					t.Fatal("restore overwrote populated target")
 				}
-				manager, err := adminauth.New(target, 4)
+				tokens, err := adminauth.NewTokens(bytes.Repeat([]byte{5}, 32), actual.Inventory.DomainID, "")
+				if err != nil {
+					t.Fatal(err)
+				}
+				manager, err := adminauth.New(target, 4, tokens)
 				if err != nil {
 					t.Fatal(err)
 				}

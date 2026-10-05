@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	jose "github.com/go-jose/go-jose/v4"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wentf9/xops-cli/core/mcp/ports"
 	mcpruntime "github.com/wentf9/xops-cli/core/mcp/runtime"
@@ -53,7 +54,7 @@ type adminPeer struct {
 	basePath    string
 	client      *http.Client
 	transport   *http.Transport
-	csrf, etag  string
+	token, etag string
 	lastHeader  http.Header
 	lastCookies []*http.Cookie
 }
@@ -116,6 +117,38 @@ func (p *adminPeer) request(method, path string, body any, want int, alter func(
 		if err != nil {
 			p.t.Fatal(err)
 		}
+		if strings.HasPrefix(path, "/api/v1/auth/") && (path == "/api/v1/auth/login" || path == "/api/v1/auth/setup" || path == "/api/v1/auth/password") {
+			action := strings.TrimPrefix(path, "/api/v1/auth/")
+			challenge := p.request("GET", "/api/v1/auth/challenge?action="+action, nil, 200, nil)
+			var parameters struct {
+				PublicKey jose.JSONWebKey `json:"publicKey"`
+				Challenge string          `json:"challenge"`
+			}
+			if err := json.Unmarshal(challenge, &parameters); err != nil {
+				p.t.Fatal(err)
+			}
+			encrypter, err := jose.NewEncrypter(jose.A256GCM, jose.Recipient{Algorithm: jose.RSA_OAEP_256, Key: parameters.PublicKey.Key, KeyID: parameters.PublicKey.KeyID}, nil)
+			if err != nil {
+				p.t.Fatal(err)
+			}
+			plaintext, err := json.Marshal(map[string]any{"challenge": parameters.Challenge, "data": json.RawMessage(data)})
+			if err != nil {
+				p.t.Fatal(err)
+			}
+			object, err := encrypter.Encrypt(plaintext)
+			clear(plaintext)
+			if err != nil {
+				p.t.Fatal(err)
+			}
+			ciphertext, err := object.CompactSerialize()
+			if err != nil {
+				p.t.Fatal(err)
+			}
+			data, err = json.Marshal(map[string]string{"ciphertext": ciphertext})
+			if err != nil {
+				p.t.Fatal(err)
+			}
+		}
 		input = bytes.NewReader(data)
 	}
 	req, err := http.NewRequestWithContext(p.t.Context(), method, p.http.URL+p.basePath+path, input)
@@ -126,7 +159,9 @@ func (p *adminPeer) request(method, path string, body any, want int, alter func(
 		req.Header.Set("Origin", p.http.URL)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("If-Match", p.etag)
-		req.Header.Set("X-CSRF-Token", p.csrf)
+	}
+	if p.token != "" {
+		req.Header.Set("Authorization", "Bearer "+p.token)
 	}
 	if alter != nil {
 		alter(req)
@@ -143,6 +178,9 @@ func (p *adminPeer) request(method, path string, body any, want int, alter func(
 	if response.StatusCode != want {
 		p.t.Fatalf("%s %s HTTP %d want %d: %s", method, path, response.StatusCode, want, data)
 	}
+	if response.StatusCode == 204 && (path == "/api/v1/auth/logout" || path == "/api/v1/auth/password") {
+		p.token = ""
+	}
 	p.lastHeader = response.Header.Clone()
 	p.lastCookies = response.Cookies()
 	if tag := response.Header.Get("ETag"); tag != "" {
@@ -153,19 +191,23 @@ func (p *adminPeer) request(method, path string, body any, want int, alter func(
 func (p *adminPeer) initialize() {
 	p.request("POST", "/api/v1/auth/setup", map[string]string{"username": "admin", "password": adminPassword, "token": setupToken}, 201, nil)
 	p.login(adminPassword)
-	if len(p.lastCookies) != 1 || !p.lastCookies[0].HttpOnly || p.lastCookies[0].SameSite != http.SameSiteStrictMode || p.lastCookies[0].Path != p.basePath+"/api/v1" {
-		p.t.Fatal("administrator cookie protections missing")
+	if len(p.lastCookies) != 0 {
+		p.t.Fatal("JWT login set a cookie")
 	}
+
 }
 func (p *adminPeer) login(password string) {
 	data := p.request("POST", "/api/v1/auth/login", map[string]string{"username": "admin", "password": password}, 200, nil)
 	var result struct {
-		CSRF string `json:"csrf"`
+		AccessToken string `json:"accessToken"`
 	}
 	if err := json.Unmarshal(data, &result); err != nil {
 		p.t.Fatal(err)
 	}
-	p.csrf = result.CSRF
+	p.token = result.AccessToken
+	if len(strings.Split(p.token, ".")) != 3 {
+		p.t.Fatal("login did not issue a JWT")
+	}
 }
 func (p *adminPeer) save(path string, body any) string {
 	data := p.request("POST", "/api/v1/"+path, body, 200, nil)
@@ -395,7 +437,7 @@ func TestAdminAuthenticationIsolationAndRestart(t *testing.T) {
 	p.request("POST", "/api/v1/auth/setup", map[string]string{"username": "admin", "password": adminPassword, "token": "wrong"}, 403, nil)
 	p.initialize()
 	p.request("POST", "/api/v1/auth/setup", map[string]string{"username": "other", "password": adminPassword, "token": setupToken}, 409, nil)
-	p.request("POST", "/api/v1/hosts", service.HostInput{Name: "no-csrf", Address: "127.0.0.1", Port: 22}, 403, func(r *http.Request) { r.Header.Del("X-CSRF-Token") })
+	p.request("POST", "/api/v1/hosts", service.HostInput{Name: "no-token", Address: "127.0.0.1", Port: 22}, 401, func(r *http.Request) { r.Header.Del("Authorization") })
 	p.request("POST", "/api/v1/hosts", service.HostInput{Name: "cross-origin", Address: "127.0.0.1", Port: 22}, 403, func(r *http.Request) { r.Header.Set("Origin", "https://untrusted.example") })
 	p.request("POST", "/api/v1/hosts", service.HostInput{Name: "no-version", Address: "127.0.0.1", Port: 22}, 428, func(r *http.Request) { r.Header.Del("If-Match") })
 	p.request("GET", "/mcp", nil, 404, nil)
@@ -415,21 +457,18 @@ func TestAdminAuthenticationIsolationAndRestart(t *testing.T) {
 	p.request("POST", "/api/v1/auth/logout", map[string]any{}, 204, nil)
 	p.request("GET", "/api/v1/inventory", nil, 401, nil)
 	p.login("replacement-admin-password")
-	oldCookies := p.client.Jar.Cookies(mustURL(t, p.http.URL+"/api/v1/inventory"))
+	oldToken := p.token
 	testutil.Close(t, p.app)
 	p.http.Close()
 	p.transport.CloseIdleConnections()
-	// Setup material can be removed after initialization. Restart logs out
-	// old sessions but preserves administrator credentials and inventory.
+	// Setup material can be removed after initialization. A shared signing
+	// key keeps unexpired JWTs valid across process restart.
 	if err := os.Remove(cfg.AdminBootstrapTokenFile); err != nil {
 		t.Fatal(err)
 	}
 	next := newAdminPeer(t, ctx, cfg)
-	next.request("GET", "/api/v1/inventory", nil, 401, func(r *http.Request) {
-		for _, c := range oldCookies {
-			r.AddCookie(c)
-		}
-	})
+	next.token = oldToken
+	next.request("GET", "/api/v1/inventory", nil, 200, nil)
 	next.login("replacement-admin-password")
 	data := next.request("GET", "/api/v1/inventory", nil, 200, nil)
 	if !bytes.Contains(data, []byte(hostID)) {

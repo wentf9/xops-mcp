@@ -14,7 +14,7 @@ import (
 	"github.com/wentf9/xops-mcp/internal/testutil"
 )
 
-func TestAdminPrefixAssetsSessionAndPortIsolation(t *testing.T) {
+func TestAdminPrefixAssetsJWTAndPortIsolation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	cfg := adminConfig(t)
@@ -63,9 +63,10 @@ func TestAdminPrefixAssetsSessionAndPortIsolation(t *testing.T) {
 		}
 	}
 	p.request("POST", "/api/v1/auth/logout", map[string]any{}, 204, nil)
-	if len(p.lastCookies) != 1 || p.lastCookies[0].Path != p.basePath+"/api/v1" || p.lastCookies[0].MaxAge != -1 {
-		t.Fatal("logout did not clear the prefixed session cookie")
+	if len(p.lastCookies) != 0 {
+		t.Fatal("logout set a cookie")
 	}
+
 	p.request("GET", "/api/v1/inventory", nil, 401, nil)
 }
 
@@ -95,26 +96,21 @@ func TestAdminPrefixBehindReverseProxy(t *testing.T) {
 	p.request("POST", "/api/v1/auth/logout", map[string]any{}, 204, nil)
 }
 
-func TestPrefixChangeDoesNotShadowNewSessionCookie(t *testing.T) {
+func TestPrefixChangeRejectsJWTFromOldAudience(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	cfg := adminConfig(t)
 	old := newAdminPeer(t, ctx, cfg)
 	old.initialize()
-	previousName := old.lastCookies[0].Name
+	previousToken := old.token
 	testutil.Close(t, old.app)
 	old.http.Close()
 	old.mcp.Close()
-	// The old /api/v1 cookie also matches this new, valid nested prefix.
+	// Access tokens are bound to the management API prefix.
 	cfg.WebBasePath = "/api/v1/console"
 	next := newAdminPeer(t, ctx, cfg)
-	next.client.Jar = old.client.Jar
+	next.token = previousToken
+	next.request("GET", "/api/v1/inventory", nil, 401, nil)
 	next.login(adminPassword)
 	next.request("GET", "/api/v1/inventory", nil, 200, nil)
-	for _, cookie := range next.client.Jar.Cookies(mustURL(t, next.http.URL+next.basePath+"/api/v1/inventory")) {
-		if cookie.Name != previousName {
-			return
-		}
-	}
-	t.Fatal("new prefix did not receive a distinct session cookie")
 }

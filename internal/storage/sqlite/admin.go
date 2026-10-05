@@ -62,70 +62,10 @@ func (s *Store) ChangeAdminPassword(ctx context.Context, expected string, hash [
 	if n != 1 {
 		return storage.ErrConflict
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM admin_sessions"); err != nil {
-		return err
-	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit administrator password: %w", err)
 	}
 	return nil
-}
-func (s *Store) CreateSession(ctx context.Context, session storage.Session) (retErr error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer rollback(tx, &retErr)
-	if _, err := tx.ExecContext(ctx, "DELETE FROM admin_sessions WHERE expires_at <= ?", time.Now().Unix()); err != nil {
-		return err
-	}
-	result, err := tx.ExecContext(ctx, `INSERT INTO admin_sessions(digest,admin_version,expires_at)
-SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM admin WHERE version=?)
-AND (SELECT count(*) FROM admin_sessions)<64`, session.Digest, session.AdminVersion, session.ExpiresAt.Unix(), session.AdminVersion)
-	if err != nil {
-		return err
-	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n != 1 {
-		return storage.ErrConflict
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("create administrator session: %w", err)
-	}
-	return nil
-}
-func (s *Store) Session(ctx context.Context, digest []byte, now time.Time) (storage.Session, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	var session storage.Session
-	var expires int64
-	err := s.db.QueryRowContext(ctx, `SELECT s.admin_version,s.expires_at FROM admin_sessions s JOIN admin a ON a.version=s.admin_version WHERE s.digest=? AND s.expires_at>?`, digest, now.Unix()).Scan(&session.AdminVersion, &expires)
-	if errors.Is(err, sql.ErrNoRows) {
-		return session, storage.ErrNotFound
-	}
-	if err != nil {
-		return session, err
-	}
-	session.Digest = digest
-	session.ExpiresAt = time.Unix(expires, 0).UTC()
-	return session, nil
-}
-func (s *Store) DeleteSession(ctx context.Context, digest []byte) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	_, err := s.db.ExecContext(ctx, "DELETE FROM admin_sessions WHERE digest=?", digest)
-	return err
-}
-func (s *Store) DeleteSessions(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	_, err := s.db.ExecContext(ctx, "DELETE FROM admin_sessions")
-	return err
 }
 func (s *Store) Audit(ctx context.Context, q storage.AuditQuery) (_ []storage.AuditRecord, retErr error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

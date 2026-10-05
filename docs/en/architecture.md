@@ -89,7 +89,7 @@ internal/dependencycheck/ existing dependency/version checks
 web/                      source and embedded assets
 ```
 
-`cmd/xops-mcp`, `internal/{command,config,server,service,adapters,storage,secure,importer}`, core consumers and dependency checks exist. The API, administrator authentication, active-operation tracking and embedded Web assets are implemented; M4 PostgreSQL is implemented. Web and MCP use the same service rules. Two independent listeners expose separate surfaces: the MCP port routes only `/mcp` and `/v1/transfers/` to the shared handler; the management port owns assets and `/api/v1/` under its configured `web_base_path`. Management defaults to loopback and has independent Host/origin configuration. Administrator sessions, MCP tokens, and short-lived transfer credentials remain distinct.
+`cmd/xops-mcp`, `internal/{command,config,server,service,adapters,storage,secure,importer}`, core consumers and dependency checks exist. The API, administrator authentication, active-operation tracking and embedded Web assets are implemented; M4 PostgreSQL is implemented. Web and MCP use the same service rules. Two independent listeners expose separate surfaces: the MCP port routes only `/mcp` and `/v1/transfers/` to the shared handler; the management port owns assets and `/api/v1/` under its configured `web_base_path`. Management defaults to loopback and has independent Host/origin configuration. Administrator JWTs, MCP tokens, and short-lived transfer credentials remain distinct.
 
 Shared packages must not import server database code, API handlers, frontend code, ORMs, or server dependency containers.
 
@@ -97,7 +97,7 @@ Shared packages must not import server database code, API handlers, frontend cod
 
 SQLite is first, using a persistent local file with foreign keys, WAL, bounded busy waits, transactions, and deadlines. PostgreSQL is the implemented second backend, with independent SQL and schema_version migrations; arbitrary SQL compatibility is not promised. Database advisory and local directory locks enforce one instance. Repeatable-read snapshots and queries use a pinned ownership session; losing it closes admission and stops the service. See the [PostgreSQL guide](postgresql.md) for backend selection, offline archives and acceptance.
 
-Hosts, identities, nodes, tags, encrypted credentials and metadata, policies and audit events are implemented. M3 adds administrator and session tables. Schema v5 gives independent tags an `id` primary key and unique `name`, with `node_tags(node_id,tag_id)` foreign-key relations. Unused tags persist; renaming retains IDs and associations, and deletion removes only those associations. Nodes use stable opaque IDs; editable addresses, ports, users, and aliases do not define identity. Imports record the mapping from old selectors.
+Hosts, identities, nodes, tags, encrypted credentials and metadata, policies and audit events are implemented. M3 added administrator and legacy session tables. SQLite v6 / PostgreSQL v3 remove admin_sessions in favor of stateless JWTs. Schema v5 gives independent tags an `id` primary key and unique `name`, with `node_tags(node_id,tag_id)` foreign-key relations. Unused tags persist; renaming retains IDs and associations, and deletion removes only those associations. Nodes use stable opaque IDs; editable addresses, ports, users, and aliases do not define identity. Imports record the mapping from old selectors.
 
 Repositories expose business operations and atomic transactions across referenced entities. M2 imports use expected revisions; Web mutations use revisions/ETags and report conflicts. Avoid a generic table CRUD layer or a single YAML blob.
 
@@ -105,7 +105,7 @@ Publish a new configuration version only after database commit, and acknowledge 
 
 Use versioned authenticated encryption for secrets and private keys, with a deployment-owned master key outside the database and an explicit key backup/recovery procedure. Encrypted storage alone does not solve runtime private-key loading.
 
-M2 uses a separate MCP token. M3 adds a single administrator, session validation and CSRF protection, with metadata-only credential reads. Multi-tenancy and OAuth are not default additions.
+M2 uses a separate MCP token. Management uses a single administrator, 15-minute stateless JWTs, configurable HTTP/HTTPS and JWE-encrypted password requests, with metadata-only credential reads. Multi-tenancy and OAuth are not default additions.
 
 The existing transfer journal initially remains in a dedicated local directory. Database support does not replace its state machine or ownership. Coordinate database, key, and journal backups. An `unknown` remote commit result must never be automatically retried or declared successful. External storage does not provide shared MCP sessions, SSH connections, or multi-instance journal ownership.
 

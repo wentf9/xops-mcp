@@ -27,6 +27,12 @@ func Handler() http.Handler {
 		case "/assets/app.js":
 			name = "app.js"
 			contentType = "text/javascript; charset=utf-8"
+		case "/assets/auth.js":
+			name = "auth.js"
+			contentType = "text/javascript; charset=utf-8"
+		case "/assets/vendor/asmcrypto.js":
+			name = "vendor/asmcrypto.js"
+			contentType = "text/javascript; charset=utf-8"
 		case "/assets/naming.js":
 			name = "naming.js"
 			contentType = "text/javascript; charset=utf-8"

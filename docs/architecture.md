@@ -94,7 +94,7 @@ internal/dependencycheck/ 已有的依赖边界与版本检查
 web/                    Web 源码与嵌入资源
 ```
 
-`cmd/xops-mcp`、`internal/{command,config,server,service,adapters,storage,secure,importer}`、消费者和依赖检查已建立；`internal/api`、`internal/adminauth`、`internal/operations` 和嵌入式 Web 已实现，PostgreSQL、后端选择和离线数据库迁移已实现。Web API 和 MCP 共用 service 层规则。HTTP 使用两个独立监听器：MCP 端口仅将 `/mcp` 和 `/v1/transfers/` 交给共享 handler；管理端口提供带可配置 `web_base_path` 的页面、资源和 `/api/v1/`。管理监听默认仅绑定回环地址，不继承 MCP 的 Host/origin 配置。各自鉴权独立，不能把管理 Cookie、MCP Token 和短期传输凭据混为一类。
+`cmd/xops-mcp`、`internal/{command,config,server,service,adapters,storage,secure,importer}`、消费者和依赖检查已建立；`internal/api`、`internal/adminauth`、`internal/operations` 和嵌入式 Web 已实现，PostgreSQL、后端选择和离线数据库迁移已实现。Web API 和 MCP 共用 service 层规则。HTTP 使用两个独立监听器：MCP 端口仅将 `/mcp` 和 `/v1/transfers/` 交给共享 handler；管理端口提供带可配置 `web_base_path` 的页面、资源和 `/api/v1/`。管理监听默认仅绑定回环地址，不继承 MCP 的 Host/origin 配置。各自鉴权独立，不能把管理 JWT、MCP Token 和短期传输凭据混为一类。
 
 共享包不得 import 新服务的数据库、HTTP API、前端、ORM 或依赖注入容器。
 
@@ -102,7 +102,7 @@ web/                    Web 源码与嵌入资源
 
 SQLite 为首个实现，文件位于持久化本地数据目录，启用外键、WAL 和有界 busy 等待；应用层仍需事务、超时和并发控制。PostgreSQL 是已实现的第二种后端，使用独立的 schema_version 和 SQL，不承诺任意 SQL 数据库兼容。部署级 advisory lock 与本地目录锁共同限制单实例；读事务使用 repeatable read，查询绑定同一物理所有权会话，连接丢失后关闭准入并退出服务。后端选择、离线归档及验收见 [PostgreSQL 指南](postgresql.md)。
 
-已实现 hosts、identities、nodes、tags、credential metadata/ciphertext、policies 和 audit events；M3 已增加 admin 与 admin_sessions；schema v5 将标签改为独立的 `tags(id,name)` 记录，节点通过 `node_tags(node_id,tag_id)` 外键关联。标签可独立创建，重命名保持主键和关联，删除时仅解除节点关联。节点使用稳定的不透明 ID，地址、端口、用户名和别名均可编辑；导入时记录旧 selector 到新 ID 的映射。
+已实现 hosts、identities、nodes、tags、credential metadata/ciphertext、policies 和 audit events；M3 增加 admin 和旧会话表；后续 SQLite v6 / PostgreSQL v3 已移除 admin_sessions，认证改为 JWT；schema v5 将标签改为独立的 `tags(id,name)` 记录，节点通过 `node_tags(node_id,tag_id)` 外键关联。标签可独立创建，重命名保持主键和关联，删除时仅解除节点关联。节点使用稳定的不透明 ID，地址、端口、用户名和别名均可编辑；导入时记录旧 selector 到新 ID 的映射。
 
 存储接口按业务操作设计，支持跨节点、身份、凭据引用的原子事务和版本前置条件。M2 导入使用 expected revision，Web 更新使用 revision/ETag；冲突返回明确错误。避免仅提供通用表 CRUD 或把完整 YAML 存成单个 blob。
 
@@ -110,7 +110,7 @@ SQLite 为首个实现，文件位于持久化本地数据目录，启用外键�
 
 密码、私钥及 passphrase 使用带版本的认证加密，主密钥由数据库外的部署配置提供。备份方案同时明确密钥备份和恢复责任。数据库持有密文不等于已解决运行时 SSH 密钥加载。
 
-M2 使用独立 MCP Token；M3 使用单管理员会话和 CSRF 防护，凭据读取只返回元数据，不扩展多租户或 OAuth。
+M2 使用独立 MCP Token；管理端使用单管理员、15 分钟无状态 JWT、可配置 HTTP/HTTPS 与 JWE 密码请求加密，凭据读取只返回元数据，不扩展多租户或 OAuth。
 
 传输 journal 初期继续使用共享实现的专属本地目录；数据库保存业务实体不会自动替代它。备份/恢复应协调业务数据库、密钥和 journal。`unknown` 表示远端提交结果不确定，不能自动重试或把它转换成成功。多实例部署不在首版范围内；外部数据库无法自动共享 MCP 会话、SSH 连接或 journal 所有权。
 

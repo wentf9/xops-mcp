@@ -1,13 +1,10 @@
-// Package adminauth owns administrator credentials and sessions independently
+// Package adminauth owns administrator credentials and stateless JWTs independently
 // of MCP service tokens and short-lived file transfer capabilities.
 package adminauth
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
@@ -17,22 +14,21 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var ErrUnauthorized = errors.New("invalid administrator credentials or session")
+var ErrUnauthorized = errors.New("invalid administrator credentials or token")
 var ErrInvalid = errors.New("username must be 1-64 characters and password must be 12-72 bytes")
 
 type Manager struct {
-	Store storage.AdminRepository
-	Cost  int
-	now   func() time.Time
-	dummy []byte
+	Store  storage.AdminRepository
+	Cost   int
+	Tokens *Tokens
+	dummy  []byte
 }
 type Login struct {
 	Token     string
-	CSRF      string
 	ExpiresAt time.Time
 }
 
-func New(store storage.AdminRepository, cost int) (*Manager, error) {
+func New(store storage.AdminRepository, cost int, tokens *Tokens) (*Manager, error) {
 	if cost == 0 {
 		cost = bcrypt.DefaultCost
 	}
@@ -40,7 +36,7 @@ func New(store storage.AdminRepository, cost int) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{Store: store, Cost: cost, now: time.Now, dummy: dummy}, nil
+	return &Manager{Store: store, Cost: cost, Tokens: tokens, dummy: dummy}, nil
 }
 func validPassword(password string) bool {
 	return len(password) >= 12 && len(password) <= 72 && !strings.ContainsAny(password, "\x00\r\n")
@@ -74,36 +70,18 @@ func (m *Manager) Login(ctx context.Context, user, password string) (Login, erro
 	if err := ctx.Err(); err != nil {
 		return Login{}, err
 	}
-	login := Login{Token: secure.ID() + secure.ID(), ExpiresAt: m.now().Add(12 * time.Hour).UTC()}
-	login.CSRF = CSRF(login.Token)
-	if err := m.Store.CreateSession(ctx, storage.Session{Digest: Digest(login.Token), AdminVersion: admin.Version, ExpiresAt: login.ExpiresAt}); err != nil {
-		return Login{}, err
+	if m.Tokens == nil {
+		return Login{}, errors.New("administrator JWT signer is not configured")
 	}
-	return login, nil
+	return m.Tokens.Issue(ctx, admin)
 }
-func Digest(token string) []byte { sum := sha256.Sum256([]byte(token)); return sum[:] }
-func CSRF(token string) string {
-	mac := hmac.New(sha256.New, []byte(token))
-	mac.Write([]byte("xops-admin-csrf-v1"))
-	return hex.EncodeToString(mac.Sum(nil))
-}
-func (m *Manager) Authenticate(ctx context.Context, token string) (storage.Session, error) {
-	if len(token) != 64 {
-		return storage.Session{}, ErrUnauthorized
+func (m *Manager) Authenticate(ctx context.Context, token string) (Identity, error) {
+	if m.Tokens == nil {
+		return Identity{}, ErrUnauthorized
 	}
-	if _, err := hex.DecodeString(token); err != nil {
-		return storage.Session{}, ErrUnauthorized
-	}
-	session, err := m.Store.Session(ctx, Digest(token), m.now())
-	if errors.Is(err, storage.ErrNotFound) {
-		return session, ErrUnauthorized
-	}
-	return session, err
+	return m.Tokens.Authenticate(ctx, token)
 }
-func (m *Manager) Logout(ctx context.Context, token string) error {
-	return m.Store.DeleteSession(ctx, Digest(token))
-}
-func (m *Manager) ChangePassword(ctx context.Context, session storage.Session, current, next string) error {
+func (m *Manager) ChangePassword(ctx context.Context, identity Identity, current, next string) error {
 	if !validPassword(next) {
 		return ErrInvalid
 	}
@@ -111,7 +89,7 @@ func (m *Manager) ChangePassword(ctx context.Context, session storage.Session, c
 	if err != nil {
 		return err
 	}
-	if a.Version != session.AdminVersion || bcrypt.CompareHashAndPassword(a.PasswordHash, []byte(current)) != nil {
+	if a.Version != identity.AdminVersion || a.Username != identity.Username || bcrypt.CompareHashAndPassword(a.PasswordHash, []byte(current)) != nil {
 		return ErrUnauthorized
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(next), m.Cost)

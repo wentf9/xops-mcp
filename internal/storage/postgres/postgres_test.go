@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/wentf9/xops-mcp/internal/secure"
+	"github.com/wentf9/xops-mcp/internal/storage"
 	"github.com/wentf9/xops-mcp/internal/testutil/pgfixture"
 	"go.uber.org/goleak"
 )
@@ -102,7 +103,7 @@ func TestMigrationRollbackUpgradeAndFutureVersion(t *testing.T) {
 	s, vault, dir, dsn := fixture(t)
 	// Simulate the previous PostgreSQL schema. A conflicting table makes the
 	// second migration fail after its first DDL; the whole upgrade must roll back.
-	if _, err := s.db.ExecContext(t.Context(), `DROP TABLE admin_sessions; DROP TABLE admin; DROP TABLE audit_events;
+	if _, err := s.db.ExecContext(t.Context(), `DROP TABLE IF EXISTS admin_sessions; DROP TABLE admin; DROP TABLE audit_events;
 UPDATE schema_version SET version=1; CREATE TABLE admin(blocker TEXT)`); err != nil {
 		t.Fatal(err)
 	}
@@ -273,5 +274,36 @@ func TestConnectionConfigurationIsExplicitAndRedacted(t *testing.T) {
 	t.Setenv("PGSERVICE", "personal")
 	if _, err := connectionConfig("postgres://u:p@localhost/test?sslmode=disable"); err == nil {
 		t.Fatal("implicit service configuration accepted")
+	}
+}
+
+func TestStatelessMigrationRemovesLegacySessions(t *testing.T) {
+	s, vault, dir, dsn := fixture(t)
+	if err := s.InitializeAdmin(t.Context(), storage.Admin{Username: "admin", PasswordHash: []byte("fixture-hash"), Version: "v1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(t.Context(), `CREATE TABLE admin_sessions(digest BYTEA PRIMARY KEY,admin_version TEXT,expires_at BIGINT);
+INSERT INTO admin_sessions VALUES(decode(repeat('00',32),'hex'),'v1',9999999999); UPDATE schema_version SET version=2`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	upgraded, err := Open(t.Context(), dir, dsn, vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := upgraded.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	a, err := upgraded.Admin(t.Context())
+	if err != nil || a.Version != "v1" || string(a.PasswordHash) != "fixture-hash" {
+		t.Fatal("administrator changed during auth migration", err)
+	}
+	var absent bool
+	if err := upgraded.db.QueryRowContext(t.Context(), "SELECT to_regclass('public.admin_sessions') IS NULL").Scan(&absent); err != nil || !absent {
+		t.Fatal("legacy session state retained", err)
 	}
 }

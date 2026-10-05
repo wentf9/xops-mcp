@@ -12,6 +12,9 @@
 | `web_listen` | `127.0.0.1:8081`，与 MCP 的 `listen` 分离 |
 | `web_public_url` | 默认按管理监听地址生成；为管理页面的外部 HTTP(S) origin，不含路径。监听通配地址时必须显式配置 |
 | `web_allowed_hosts` | 额外允许访问管理端口的 Host，不继承 MCP 的 `allowed_hosts` |
+| `admin_jwt_key_file` / `admin_encryption_key_file` | Web 必填，私有 JWT 签名密钥与 RSA 请求解密密钥，详见[认证指南](admin-auth.md) |
+| `web_tls_cert_file` / `web_tls_key_file` | 原生 HTTPS 证书和私钥，仅 web_tls_enabled 为 true 时使用 |
+| `web_tls_enabled` | 默认 false，控制原生 HTTPS；关闭时允许 HTTP，开启需证书和私钥 |
 | `web_base_path` | 默认空，页面位于 `/`；例如 `/console` 或 `/platform/ops`，覆盖页面、资源和管理 API |
 
 反向代理部署示例：
@@ -21,6 +24,9 @@ listen: 127.0.0.1:8080
 public_url: https://mcp.example.com
 web_listen: 127.0.0.1:8081
 web_public_url: https://admin.example.com
+web_tls_enabled: false
+admin_jwt_key_file: admin.jwt.key
+admin_encryption_key_file: admin.encryption.key
 web_base_path: /console
 ```
 
@@ -30,17 +36,19 @@ web_base_path: /console
 
 ## 初始化与登录
 
-使用 [server.yaml](../examples/server.yaml) 时，分别创建三个文件：
+使用 [server.yaml](../examples/server.yaml) 时，分别创建部署和认证密钥文件：
 
 ```sh
 bin/xops-mcp keygen --out .local/master.key
 bin/xops-mcp keygen --out .local/mcp.token
+bin/xops-mcp keygen --out .local/admin.jwt.key
+bin/xops-mcp keygen --type rsa --out .local/admin.encryption.key
 bin/xops-mcp keygen --out .local/admin.setup
 bin/xops-mcp migrate --config .local/server.yaml
 bin/xops-mcp serve --config .local/server.yaml
 ```
 
-打开 `http://127.0.0.1:8081/`，填写管理员用户名、密码和 `admin.setup` 中的初始化凭据。初始化凭据必须与 MCP Token 不同；只允许创建一个管理员，后续初始化请求不会覆盖已有账户。管理员密码为 12–72 字节，以 bcrypt 哈希保存。
+该示例关闭原生 TLS，使用 HTTP；也可按[认证指南](admin-auth.md)开启 HTTPS。打开 `http://127.0.0.1:8081/`，填写管理员用户名、密码和 `admin.setup` 中的初始化凭据。初始化凭据必须与 MCP Token 不同；只允许创建一个管理员，后续初始化请求不会覆盖已有账户。管理员密码为 12–72 字节，以 bcrypt 哈希保存。
 
 初始化和修改密码均按 UTF-8 字节数校验，不按字符数计数。例如 `管理员新密码` 为 18 字节，符合要求；24 个常见中文字符通常为 72 字节。前端和后端都会拒绝不足 12 字节、超过 72 字节或包含 NUL、CR、LF 的新密码，确认密码需完全一致。
 
@@ -51,9 +59,9 @@ bin/xops-mcp admin-init --config .local/server.yaml --username admin --password-
 bin/xops-mcp admin-reset --config .local/server.yaml --password-file /secure/new-admin-password.txt
 ```
 
-密码文件必须为 0600；也可使用 `--password-stdin`。命令不接受明文密码参数，且需要停止服务以取得部署锁。`admin-init` 不覆盖账户；`admin-reset` 为持有部署主密钥的运维人员重置密码，并使全部会话失效。
+密码文件必须为 0600；也可使用 `--password-stdin`。命令不接受明文密码参数，且需要停止服务以取得部署锁。`admin-init` 不覆盖账户；`admin-reset` 为持有部署主密钥的运维人员重置密码，旧 JWT 按原有效期自然失效。
 
-管理员 Cookie 为 HttpOnly、SameSite=Strict，仅作用于 `<web_base_path>/api/v1`，有效期 12 小时。管理入口 `web_public_url` 使用 HTTPS 时 Cookie 带 Secure。退出登录使当前会话失效；修改密码和重启服务使所有管理员会话失效。MCP Token 与短期传输凭据不能登录控制台，管理员 Cookie 也不能访问 MCP 工具。
+管理员使用 15 分钟 Bearer JWT，前端保存在当前标签页的 sessionStorage。验证不访问会话表，重启保留有效 JWT；退出只清除客户端令牌，改密后的旧 JWT 自然到期。初始化、登录和改密均要求 JWE 加密请求，服务端拒绝明文密码字段。MCP Token、传输凭据和管理员 JWT 的权限保持隔离。完整格式、HTTPS 配置和升级说明见[管理员认证](admin-auth.md)。
 
 支持从其他网站的链接打开控制台首页。跨站放行仅限首页的 `GET`/`HEAD` 顶层文档导航；仍校验 Host 和请求携带的 Origin，跨站 iframe、资源抓取及管理 API 请求保持拒绝。
 
@@ -62,7 +70,7 @@ bin/xops-mcp admin-reset --config .local/server.yaml --password-file /secure/new
 推荐顺序：
 
 1. 在“主机与信任”创建 SSH 地址和端口。
-2. 选择“配置公钥”，通过直连获取或输入已独立核验的公钥，预览指纹后确认并固定。直连获取不发送 SSH 认证凭据，输入预览不连接主机；两种方式都不会自动建立信任。确认记录绑定当前会话、主机和配置版本，两分钟内有效且只能使用一次。
+2. 选择“配置公钥”，通过直连获取或输入已独立核验的公钥，预览指纹后确认并固定。直连获取不发送 SSH 认证凭据，输入预览不连接主机；两种方式都不会自动建立信任。确认记录绑定当前 JWT、主机和配置版本，两分钟内有效且只能使用一次。
 3. 在“凭据”写入密码或私钥；私钥可附带口令。列表和编辑界面只显示元数据，留空可保留已有材料。
 4. 创建“登录身份”，关联 SSH 用户名和凭据。
 5. 在“标签”页面创建所需标签，再创建节点，选择主机、身份、已有标签和有序跳板链，然后启用。连接测试验证 SSH 握手与认证，不执行远端命令，需要节点及依赖跳板已启用。
@@ -99,13 +107,14 @@ bin/xops-mcp admin-reset --config .local/server.yaml --password-file /secure/new
 
 ## HTTP API
 
-管理 API 位于管理端口的 `<web_base_path>/api/v1/`，下表路径均相对此目录。写请求必须为同源请求，使用 JSON、有效会话的 `X-CSRF-Token`，并在配置操作中携带 `If-Match`。`GET /inventory` 返回强 ETag，例如 `"7"`；缺少条件返回 428，版本冲突返回 412。凭据输入仅用于写入，返回数据不含密码、私钥、口令、密文或密码哈希。
+管理 API 位于管理端口的 `<web_base_path>/api/v1/`，下表路径均相对此目录。写请求必须为同源请求，使用 JSON、`Authorization: Bearer <JWT>`，并在配置操作中携带 `If-Match`。`GET /inventory` 返回强 ETag，例如 `"7"`；缺少条件返回 428，版本冲突返回 412。凭据输入仅用于写入，返回数据不含密码、私钥、口令、密文或密码哈希。
 
 | 接口 | 用途 |
 | --- | --- |
-| `GET /auth/session` | 登录/初始化状态、当前会话 CSRF Token |
-| `POST /auth/setup`、`POST /auth/login` | 初始化或登录；JSON 字段为 `username`、`password`，初始化另有 `token` |
-| `POST /auth/logout`、`PUT /auth/password` | 退出或修改密码；密码更新字段为 `current`、`next` |
+| `GET /auth/challenge?action=...` | 返回 RSA JWK 与 90 秒签名挑战；改密需 Bearer JWT |
+| `GET /auth/session` | 登录/初始化状态与 JWT 有效期 |
+| `POST /auth/setup`、`POST /auth/login` | JWE `ciphertext`；解密后为 `username/password`，初始化另含 `token` |
+| `POST /auth/logout`、`PUT /auth/password` | 客户端退出确认，或通过 JWE 加密的 `current/next` 修改密码 |
 | `GET /inventory` | 主机、身份、节点、凭据元数据、标签、策略和发布状态 |
 | `POST /hosts`、`/identities`、`/nodes`、`/credentials`、`/tags` | 创建记录 |
 | `PUT` / `DELETE /{资源}/{id}` | 修改或删除记录 |
@@ -133,7 +142,12 @@ bin/xops-mcp admin-reset --config .local/server.yaml --password-file /secure/new
 mkdir -m 700 -p examples/deployment/.secrets
 bin/xops-mcp keygen --out examples/deployment/.secrets/master.key
 bin/xops-mcp keygen --out examples/deployment/.secrets/mcp.token
+bin/xops-mcp keygen --out examples/deployment/.secrets/admin.jwt.key
+bin/xops-mcp keygen --type rsa --out examples/deployment/.secrets/admin.encryption.key
 bin/xops-mcp keygen --out examples/deployment/.secrets/admin.setup
+# 使用匹配 web_public_url、由浏览器信任的部署 TLS 证书和私钥
+install -m 0644 /path/to/admin-tls.crt examples/deployment/.secrets/admin-tls.crt
+install -m 0600 /path/to/admin-tls.key examples/deployment/.secrets/admin-tls.key
 sudo chown -R 65532:65532 examples/deployment/.secrets
 docker compose -f examples/deployment/compose.yaml up -d --build
 ```
@@ -157,7 +171,7 @@ sudo tar --numeric-owner -czf /secure-backups/xops-data.tgz -C /var/lib/xops-mcp
 sudo systemctl start xops-mcp
 ```
 
-容器部署先 `docker compose stop`，再备份命名卷和密钥挂载。恢复时保持文件权限和所有者，将完整数据放回私有目录，配置同一主密钥与 MCP Token；先执行 `migrate`，再启动一个实例。缺少主密钥无法解密 SSH 凭据。重启会清除旧管理员会话，需要重新登录；节点、策略、管理员密码、稳定 ID 和 unknown 目标锁保留。不要同时运行原实例与恢复副本。
+容器示例使用原生 HTTPS，需将匹配 `web_public_url` 且受浏览器信任的 `admin-tls.crt` 与私有 `admin-tls.key` 放入 `.secrets`，并设置正确的所有者。容器部署先 `docker compose stop`，再备份命名卷和密钥挂载。恢复时保持文件权限和所有者，将完整数据放回私有目录，配置同一主密钥、MCP Token、JWT 签名和 RSA 解密密钥；先执行 `migrate`，再启动一个实例。缺少主密钥无法解密 SSH 凭据。同一 JWT 密钥下重启保留未过期令牌；节点、策略、管理员密码、稳定 ID 和 unknown 目标锁保留。不要同时运行原实例与恢复副本。
 
 ## 开发验证
 

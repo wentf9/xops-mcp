@@ -14,6 +14,8 @@ mkdir -m 700 -p .local
 cp examples/server.yaml .local/server.yaml
 bin/xops-mcp keygen --out .local/master.key
 bin/xops-mcp keygen --out .local/mcp.token
+bin/xops-mcp keygen --out .local/admin.jwt.key
+bin/xops-mcp keygen --type rsa --out .local/admin.encryption.key
 bin/xops-mcp keygen --out .local/admin.setup
 bin/xops-mcp migrate --config .local/server.yaml
 bin/xops-mcp serve --config .local/server.yaml
@@ -47,6 +49,7 @@ xops-cli（CLI 产品与现阶段共享内核的源码仓库）
 - [Web 控制台、API 与部署](docs/web-console.md)
 
 - [服务部署与配置导入](docs/server.md)
+- [管理员 JWT、HTTPS 与密码加密](docs/admin-auth.md)
 - [PostgreSQL 与离线数据库迁移](docs/postgresql.md)
 - [架构与依赖复用决策](docs/architecture.md)
 - [公共接口解耦与服务端接入](docs/interface-decoupling.md)

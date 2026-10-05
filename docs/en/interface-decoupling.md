@@ -28,7 +28,7 @@ The server production graph must eventually exclude CLI configuration/models/ada
 
 Policy belongs to the operation snapshot. Inspection, execution, transfer start, commit, and recovery permits have different capabilities; inspection cannot acquire a writable SFTP client.
 
-The host owns the database and administrator sessions. Runtime neither understands an ORM nor discovers personal config, keys, known_hosts, or SSH_AUTH_SOCK.
+The host owns the database and administrator authentication. Runtime neither understands an ORM nor discovers personal config, keys, known_hosts, or SSH_AUTH_SOCK.
 
 ## 3. Authentication and environment
 

@@ -57,7 +57,7 @@ func TestConsoleCrossSiteNavigation(t *testing.T) {
 	p.initialize()
 	input := service.HostInput{Name: "denied", Address: "127.0.0.1", Port: 22}
 	p.request("POST", "/api/v1/hosts", input, 403, navigate)
-	p.request("POST", "/api/v1/hosts", input, 403, func(r *http.Request) { r.Header.Del("X-CSRF-Token") })
+	p.request("POST", "/api/v1/hosts", input, 401, func(r *http.Request) { r.Header.Del("Authorization") })
 	p.request("POST", "/api/v1/hosts", input, 403, func(r *http.Request) { r.Header.Del("Origin") })
 	p.request("POST", "/api/v1/hosts", input, 403, func(r *http.Request) { r.Header.Set("Origin", "https://untrusted.example") })
 	p.request("GET", "/api/v1/inventory", nil, 403, navigate)

@@ -54,7 +54,7 @@ M2 交付离线导入和运行中更新的 service 契约；M3 已接入 Web/API
 
 归属：`xops-mcp`。
 
-- 实现单管理员初始化、登录、会话失效和 CSRF 防护。
+- 实现单管理员初始化、登录、JWT 过期与同源保护。
 - 实现节点/身份/标签管理、连接测试、主机密钥确认、凭据更新和策略管理。
 - 编辑接口使用 ETag/revision；凭据 API 仅显示元数据。
 - 提供审计查询，明确运行中任务状态与节点禁用/撤销语义。
@@ -62,7 +62,7 @@ M2 交付离线导入和运行中更新的 service 契约；M3 已接入 Web/API
 
 验收：浏览器 CRUD 流程、并发编辑冲突、Web 修改后 MCP 可见性、凭据不泄露、会话与 MCP Token 权限隔离、重启后持久化、已运行任务不被普通编辑错误重定向。
 
-实现包含 SQLite v4 管理员与会话迁移、v5 独立标签与主键关联迁移、Web/离线管理员初始化、12 小时会话及全会话失效、同源/CSRF 防护、If-Match 管理 API、绑定会话与配置版本的公钥确认、只做 SSH 认证的连接测试、游标审计查询和活跃许可视图。管理端口与 MCP 端口分离，管理页面、资源、API 和 Cookie 支持固定前缀。Web 资源直接嵌入二进制；部署示例覆盖 Docker/Compose、systemd、Nginx 和离线备份恢复。
+实现包含 SQLite v4 管理员与会话迁移、v5 独立标签与主键关联迁移、Web/离线管理员初始化、后续升级的 15 分钟无状态 JWT、可配置 HTTP/HTTPS 和 JWE 密码请求加密、同源保护、If-Match 管理 API、绑定 JWT 与配置版本的公钥确认、只做 SSH 认证的连接测试、游标审计查询和活跃许可视图。管理端口与 MCP 端口分离，管理页面、资源、API 支持固定前缀，JWT 绑定此前缀。Web 资源直接嵌入二进制；部署示例覆盖 Docker/Compose、systemd、Nginx 和离线备份恢复。
 
 自动化验收使用隔离 SSH fixture，覆盖浏览器初始化/登录、CRUD、公钥确认、真实连接、并发编辑冲突、XSS 转义、标签/策略/审计、移动布局及退出；Go 集成测试覆盖 Web 更新与同一 MCP 会话、凭据轮换、权限隔离、迁移与重启、备份副本中的 unknown 任务和原绑定核验。当前未在生产主机或原生 Windows/macOS 上验收；运行中视图仅跟踪许可，不替代传输 journal。使用方式见 [Web 控制台指南](web-console.md)。
 
@@ -78,9 +78,13 @@ M2 交付离线导入和运行中更新的 service 契约；M3 已接入 Web/API
 
 实现包括独立 PostgreSQL v1/v2 迁移、JSONB/BYTEA/identity 查询、repeatable read 读快照、revision 事务、固定物理会话上的数据库 advisory lock、本地 journal 文件锁和连接丢失后的关闭流程。配置使用 `database_driver` 与私有 `postgres_dsn_file`；默认仍为 SQLite。`db-export`、`db-import`、`db-verify` 使用版本化加密归档，保留部署身份、历史凭据/来源、墓碑、管理员及审计，只允许向空目标原子恢复；会话不迁移，journal 和密钥单独备份。
 
-共同存储契约验证两后端的数据行为、回滚、并发 revision、审计/会话和四种归档方向；同一组 service、管理 API、HTTP MCP、真实 SSH/SFTP/ProxyJump 及 unknown 恢复测试分别使用两后端。PostgreSQL 专项覆盖空库、已有 schema 升级、失败迁移回滚重试、未来版本拒绝、跨目录所有权排他、锁等待取消、错误密钥和连接池/监听器回收。CI 提供 PostgreSQL 18 并运行双后端 race 矩阵。运行与备份说明见 [PostgreSQL 指南](postgresql.md)。当前证据来自 Linux 隔离 fixture，未验收生产主机、原生 Windows/macOS 或高可用故障切换；浏览器自动化使用 SQLite，PostgreSQL 使用相同 Go API 集成验收。
+共同存储契约验证两后端的数据行为、回滚、并发 revision、审计/管理员凭据和四种归档方向；同一组 service、管理 API、HTTP MCP、真实 SSH/SFTP/ProxyJump 及 unknown 恢复测试分别使用两后端。PostgreSQL 专项覆盖空库、已有 schema 升级、失败迁移回滚重试、未来版本拒绝、跨目录所有权排他、锁等待取消、错误密钥和连接池/监听器回收。CI 提供 PostgreSQL 18 并运行双后端 race 矩阵。运行与备份说明见 [PostgreSQL 指南](postgresql.md)。当前证据来自 Linux 隔离 fixture，未验收生产主机、原生 Windows/macOS 或高可用故障切换；浏览器自动化使用 SQLite，PostgreSQL 使用相同 Go API 集成验收。
 
 PostgreSQL 支持仍限定单服务实例。高可用、分布式任务调度、共享会话、多租户和独立 `xops-core` 不属于本轮路线的交付承诺。
+
+## 管理认证演进（已实现）
+
+管理员认证使用 15 分钟 JWT，退出清除客户端令牌，改密后的旧 JWT 自然到期；验签不访问会话存储。初始化、登录和改密使用标准 JWE，并通过配置选择 HTTP 或 HTTPS，90 秒签名挑战绑定用途及改密 JWT。SQLite v6 / PostgreSQL v3 移除旧会话表。认证实例共享部署 ID、前缀和外部密钥即可互通，完整产品的数据库锁、运行状态和 journal 仍为单实例。配置、升级和验收见[认证指南](admin-auth.md)。
 
 ## 持续发布约束
 

@@ -3,8 +3,12 @@
 database_driver: sqlite
 data_dir: data
 master_key_file: master.key
+admin_jwt_key_file: admin.jwt.key
+admin_encryption_key_file: admin.encryption.key
 mcp_token_file: mcp.token
 web_enabled: true
+# Enable native HTTPS with web_tls_enabled and certificate/key paths.
+web_tls_enabled: false
 # Management never shares the MCP listener. Prefix applies to UI/assets/API.
 web_listen: 127.0.0.1:8081
 web_public_url: http://127.0.0.1:8081

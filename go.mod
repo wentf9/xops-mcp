@@ -3,6 +3,7 @@ module github.com/wentf9/xops-mcp
 go 1.26.0
 
 require (
+	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/gofrs/flock v0.13.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0

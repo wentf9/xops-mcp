@@ -27,7 +27,7 @@ func TestMasterKeyValidationAndExplicitPaths(t *testing.T) {
 		t.Fatal("public secret file accepted")
 	}
 	path := filepath.Join(t.TempDir(), "server.yaml")
-	if err := os.WriteFile(path, []byte("data_dir: data\nmaster_key_file: master.key\nmcp_token_file: token\ntool_timeout: 2s\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("data_dir: data\nmaster_key_file: master.key\nmcp_token_file: token\nweb_enabled: false\ntool_timeout: 2s\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := config.Load(path)
@@ -55,7 +55,7 @@ func TestDatabaseSelectionAndConnectionFilePaths(t *testing.T) {
 		{"postgres_dsn_file: secret.dsn\n", false},
 		{"database_driver: postgres\npostgres_dsn_file: secret.dsn\n", true},
 	} {
-		if err := os.WriteFile(path, []byte("data_dir: data\nmaster_key_file: master.key\n"+tc.value), 0600); err != nil {
+		if err := os.WriteFile(path, []byte("data_dir: data\nmaster_key_file: master.key\nweb_enabled: false\n"+tc.value), 0600); err != nil {
 			t.Fatal(err)
 		}
 		cfg, err := config.Load(path)

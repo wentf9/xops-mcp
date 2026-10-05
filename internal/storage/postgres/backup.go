@@ -99,7 +99,7 @@ func (s *Store) Restore(ctx context.Context, b storage.Backup) (retErr error) {
 	if revision != 0 {
 		return errors.New("database restore requires an empty target")
 	}
-	for _, table := range []string{"hosts", "identities", "nodes", "credentials", "credential_versions", "tags", "tombstones", "sources", "audit_events", "admin", "admin_sessions"} {
+	for _, table := range []string{"hosts", "identities", "nodes", "credentials", "credential_versions", "tags", "tombstones", "sources", "audit_events", "admin"} {
 		var count int
 		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil {
 			return err

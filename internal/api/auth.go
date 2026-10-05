@@ -7,52 +7,50 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/wentf9/xops-mcp/internal/adminauth"
 	"github.com/wentf9/xops-mcp/internal/storage"
 )
 
-func (s *Server) cookie(w http.ResponseWriter, login adminauth.Login) {
-	c := &http.Cookie{Name: s.cookieName, Value: login.Token, Path: s.basePath + "/api/v1", HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteStrictMode, Expires: login.ExpiresAt, MaxAge: int(time.Until(login.ExpiresAt).Seconds())}
-	if login.Token == "" {
-		c.MaxAge = -1
-		c.Expires = time.Unix(1, 0)
-	}
-	http.SetCookie(w, c)
-}
 func (s *Server) token(r *http.Request) string {
-	values := r.CookiesNamed(s.cookieName)
+	values := r.Header.Values("Authorization")
 	if len(values) != 1 {
 		return ""
 	}
-	return values[0].Value
+	parts := strings.Split(values[0], " ")
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
+		return ""
+	}
+	return parts[1]
 }
 func (s *Server) authorize(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := s.token(r)
-		session, err := s.auth.Authenticate(r.Context(), token)
+		identity, err := s.auth.Authenticate(r.Context(), token)
 		if err != nil {
 			if errors.Is(err, adminauth.ErrUnauthorized) {
-				s.cookie(w, adminauth.Login{})
+				w.Header().Set("WWW-Authenticate", `Bearer realm="xops-admin"`)
 				problem(w, 401, "login_required", "请先登录")
 			} else {
 				failure(w, err)
 			}
 			return
 		}
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			if len(r.Header.Values("X-CSRF-Token")) != 1 || subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(adminauth.CSRF(token))) != 1 {
-				problem(w, 403, "csrf_invalid", "会话校验失败，请刷新页面")
-				return
-			}
-		}
-		ctx := context.WithValue(r.Context(), contextKey{}, authContext{token, session})
+		ctx := context.WithValue(r.Context(), contextKey{}, authContext{token, identity})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 func (s *Server) session(w http.ResponseWriter, r *http.Request) {
-	a, err := s.store.Admin(r.Context())
+	if identity, err := s.auth.Authenticate(r.Context(), s.token(r)); err == nil {
+		respond(w, 200, map[string]any{"authenticated": true, "username": identity.Username, "expiresAt": identity.ExpiresAt})
+		return
+	} else if !errors.Is(err, adminauth.ErrUnauthorized) {
+		failure(w, err)
+		return
+	}
+	_, err := s.store.Admin(r.Context())
 	if errors.Is(err, storage.ErrNotFound) {
 		respond(w, 200, map[string]any{"authenticated": false, "setupRequired": true, "setupEnabled": s.setupEnabled})
 		return
@@ -61,17 +59,42 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	token := s.token(r)
-	session, err := s.auth.Authenticate(r.Context(), token)
-	if errors.Is(err, adminauth.ErrUnauthorized) {
-		respond(w, 200, map[string]any{"authenticated": false, "setupRequired": false})
-		return
+	respond(w, 200, map[string]any{"authenticated": false, "setupRequired": false})
+}
+func (s *Server) challenge(w http.ResponseWriter, r *http.Request) {
+	action := r.URL.Query().Get("action")
+	token := ""
+	if action == "password" {
+		token = s.token(r)
+		if _, err := s.auth.Authenticate(r.Context(), token); err != nil {
+			problem(w, 401, "login_required", "请先登录")
+			return
+		}
 	}
+	parameters, err := s.cipher.Challenge(r.Context(), action, token)
 	if err != nil {
-		failure(w, err)
+		problem(w, 400, "invalid_challenge", "加密请求用途不正确")
 		return
 	}
-	respond(w, 200, map[string]any{"authenticated": true, "username": a.Username, "csrf": adminauth.CSRF(token), "expiresAt": session.ExpiresAt})
+	respond(w, 200, parameters)
+}
+func (s *Server) encryptedInput(w http.ResponseWriter, r *http.Request, action string, value any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, adminauth.MaxEncryptedRequest)
+	var input struct {
+		Ciphertext string `json:"ciphertext"`
+	}
+	if !decode(w, r, &input) {
+		return false
+	}
+	token := ""
+	if action == "password" {
+		token = s.token(r)
+	}
+	if err := s.cipher.Decrypt(r.Context(), input.Ciphertext, action, token, value); err != nil {
+		problem(w, 400, "encrypted_request_invalid", "加密请求无效或已过期，请重新提交")
+		return false
+	}
+	return true
 }
 func (s *Server) loginSlot(w http.ResponseWriter, r *http.Request) (func(), bool) {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -118,7 +141,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if !decode(w, r, &input) {
+	if !s.encryptedInput(w, r, "login", &input) {
 		return
 	}
 	login, err := s.auth.Login(r.Context(), input.Username, input.Password)
@@ -130,8 +153,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	s.cookie(w, login)
-	respond(w, 200, map[string]any{"username": input.Username, "csrf": login.CSRF, "expiresAt": login.ExpiresAt})
+	respond(w, 200, map[string]any{"username": input.Username, "accessToken": login.Token, "tokenType": "Bearer", "expiresAt": login.ExpiresAt})
 }
 func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	release, ok := s.loginSlot(w, r)
@@ -144,7 +166,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 		Token    string `json:"token"`
 	}
-	if !decode(w, r, &input) {
+	if !s.encryptedInput(w, r, "setup", &input) {
 		return
 	}
 	sum := sha256.Sum256([]byte(input.Token))
@@ -164,13 +186,8 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, 201, map[string]bool{"initialized": true})
 }
-func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
-	identity := r.Context().Value(contextKey{}).(authContext)
-	if err := s.auth.Logout(r.Context(), identity.token); err != nil {
-		failure(w, err)
-		return
-	}
-	s.cookie(w, adminauth.Login{})
+func (s *Server) logout(w http.ResponseWriter, _ *http.Request) {
+	// Stateless logout is client-side deletion; issued JWTs expire naturally.
 	respond(w, 204, nil)
 }
 func (s *Server) password(w http.ResponseWriter, r *http.Request) {
@@ -183,11 +200,11 @@ func (s *Server) password(w http.ResponseWriter, r *http.Request) {
 		Current string `json:"current"`
 		Next    string `json:"next"`
 	}
-	if !decode(w, r, &input) {
+	if !s.encryptedInput(w, r, "password", &input) {
 		return
 	}
 	identity := r.Context().Value(contextKey{}).(authContext)
-	err := s.auth.ChangePassword(r.Context(), identity.session, input.Current, input.Next)
+	err := s.auth.ChangePassword(r.Context(), identity.identity, input.Current, input.Next)
 	if errors.Is(err, adminauth.ErrUnauthorized) {
 		problem(w, 403, "invalid_password", "当前密码不正确")
 		return
@@ -200,6 +217,5 @@ func (s *Server) password(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	s.cookie(w, adminauth.Login{})
 	respond(w, 204, nil)
 }

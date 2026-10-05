@@ -1,11 +1,26 @@
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
+import { generateKeyPairSync, privateDecrypt, createDecipheriv, constants } from "node:crypto";
+const encryptionPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const encryptionJWK = { ...encryptionPair.publicKey.export({ format: "jwk" }), alg: "RSA-OAEP-256", use: "enc", kid: "ui-fixture" };
+function encryptedBody(route) {
+  const body = route.request().postDataJSON();
+  assert.deepEqual(Object.keys(body), ["ciphertext"]);
+  const [header, wrapped, iv, ciphertext, tag] = body.ciphertext.split(".");
+  const key = privateDecrypt({ key: encryptionPair.privateKey, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" }, Buffer.from(wrapped, "base64url"));
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64url"));
+  decipher.setAAD(Buffer.from(header));
+  decipher.setAuthTag(Buffer.from(tag, "base64url"));
+  const plaintext = Buffer.concat([decipher.update(Buffer.from(ciphertext, "base64url")), decipher.final()]);
+  try { return JSON.parse(plaintext.toString()).data; }
+  finally { key.fill(0); plaintext.fill(0); }
+}
 import { readFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const web = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const origin = "http://xops.test";
+const origin = "https://xops.test";
 const nameCases = JSON.parse(
   await readFile(
     resolve(web, "../internal/naming/testdata/cases.json"),
@@ -91,11 +106,13 @@ async function fixture() {
         headers,
         body: JSON.stringify(data),
       });
+    if (path === "/api/v1/auth/challenge")
+      return json({ publicKey: encryptionJWK, challenge: "synthetic-ui-challenge" });
     if (path === "/api/v1/auth/session")
       return json({
         authenticated: true,
         username: "fixture-admin",
-        csrf: "synthetic-csrf",
+        expiresAt: new Date(Date.now() + 900000).toISOString(),
       });
     if (path === "/api/v1/inventory")
       return json(state.inventory, { ETag: `"${state.inventory.revision}"` });
@@ -110,6 +127,7 @@ async function fixture() {
     const file = {
       "/": ["index.html", "text/html"],
       "/assets/app.js": ["app.js", "text/javascript"],
+      "/assets/auth.js": ["auth.js", "text/javascript"],
       "/assets/naming.js": ["naming.js", "text/javascript"],
       "/assets/style.css": ["style.css", "text/css"],
     }[path];
@@ -313,7 +331,81 @@ async function checkPasswordByteLimits({ page, state }, setup) {
   }
   assert.deepEqual(writes, []);
 }
+async function checkLogoutSessionRace({ page, state }, lateStatus, duringLogin = false) {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  const previous = "previous.jwt.token", current = "current.jwt.token";
+  const storageKey = "xops.admin.token:" + origin + "/api/v1/";
+  const pending = barrier(), release = barrier(), loginPending = barrier(), finishLogin = barrier();
+  await page.addInitScript(({ storageKey, previous }) => {
+    sessionStorage.setItem(storageKey, previous);
+    const readJSON = Response.prototype.json;
+    Response.prototype.json = async function (...args) {
+      const data = await readJSON.apply(this, args);
+      if (this.headers.get("X-Fixture-Late-Session") === "1") {
+        // Observe the next task, after api()/boot() consume the JSON and their
+        // promise continuations. No timing sleep guesses when the race ran.
+        setTimeout(() => { window.lateSessionProcessed = true; }, 0);
+      }
+      return data;
+    };
+  }, { storageKey, previous });
+  state.routes.set("/api/v1/auth/session", async route => {
+    const auth = route.request().headers().authorization;
+    if (auth === "Bearer " + previous)
+      return json(route, { authenticated: true, username: "previous-admin" });
+    assert.equal(auth, undefined);
+    pending.release();
+    await release.ready;
+    return route.fulfill({
+      status: lateStatus,
+      contentType: "application/json",
+      headers: { "X-Fixture-Late-Session": "1" },
+      body: JSON.stringify(lateStatus === 200
+        ? { authenticated: false, setupRequired: false }
+        : { message: "delayed session failure" }),
+    });
+  });
+  state.routes.set("/api/v1/auth/login", async route => {
+    const body = encryptedBody(route);
+    assert.equal(body.username, "current-admin");
+    assert.equal(body.password, "synthetic-current-password");
+    loginPending.release();
+    if (duringLogin) await finishLogin.ready;
+    return json(route, { accessToken: current, username: "current-admin", expiresAt: new Date(Date.now() + 900000).toISOString() });
+  });
+  try {
+    await page.goto(origin + "/");
+    await page.getByRole("heading", { name: "节点总览", exact: true }).waitFor();
+    await page.locator('.sidebar [data-action="logout"]').click();
+    await bounded(pending.ready);
+    await page.getByLabel("用户名", { exact: true }).fill("current-admin");
+    await page.getByLabel("密码", { exact: true }).fill("synthetic-current-password");
+    await page.getByRole("button", { name: "登录控制台", exact: false }).click();
+    if (duringLogin) {
+      await bounded(loginPending.ready);
+      release.release();
+      await page.waitForFunction(() => window.lateSessionProcessed);
+      assert.equal(await page.getByLabel("用户名", { exact: true }).inputValue(), "current-admin");
+      assert.equal(await page.getByRole("button", { name: "登录控制台", exact: false }).isDisabled(), true);
+      finishLogin.release();
+    }
+    await page.getByRole("heading", { name: "节点总览", exact: true }).waitFor();
+    assert.equal(await page.evaluate(key => sessionStorage.getItem(key), storageKey), current);
+    release.release();
+    await page.waitForFunction(() => window.lateSessionProcessed);
+    assert.equal(await page.evaluate(key => sessionStorage.getItem(key), storageKey), current);
+    await page.getByRole("heading", { name: "节点总览", exact: true }).waitFor();
+    assert.match(await page.locator(".sidebar-bottom").innerText(), /current-admin/);
+    const nextRequest = page.waitForRequest(request => new URL(request.url()).pathname === "/api/v1/inventory");
+    await page.getByRole("button", { name: "↻ 刷新", exact: true }).click();
+    assert.equal((await nextRequest).headers().authorization, "Bearer " + current);
+  } finally { release.release(); finishLogin.release(); }
+}
+
 const cases = {
+  async logoutSessionResponseAfterLogin(fixture) { await checkLogoutSessionRace(fixture, 200); },
+  async logoutSessionErrorAfterLogin(fixture) { await checkLogoutSessionRace(fixture, 503); },
+  async logoutSessionResponseDuringLogin(fixture) { await checkLogoutSessionRace(fixture, 200, true); },
   async auditTransferOutcomes({ page, state }) {
     populate(state);
     const records = [
@@ -401,7 +493,7 @@ const cases = {
   async unicodePasswordChange({ page, state }) {
     const submitted = barrier();
     state.routes.set("/api/v1/auth/password", (route) => {
-      const body = route.request().postDataJSON();
+      const body = encryptedBody(route);
       assert.equal(body.next, "管理员新密码");
       submitted.release();
       state.routes.set("/api/v1/auth/session", (route) =>
@@ -1124,7 +1216,10 @@ for (const kind of [
 }
 const failures = [];
 try {
+  const selected = new Set(process.argv.slice(2));
+  for (const name of selected) assert(name in cases, "unknown browser regression: " + name);
   for (const [name, check] of Object.entries(cases)) {
+    if (selected.size && !selected.has(name)) continue;
     const f = await fixture();
     try {
       await check(f);

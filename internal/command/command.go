@@ -4,8 +4,11 @@ package command
 import (
 	"context"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
@@ -27,6 +30,7 @@ const help = `xops-mcp: standalone HTTP MCP server
 
 Commands:
   keygen --out FILE                         Create a private 256-bit key or MCP token
+         [--type rsa]                        Create a PKCS8 RSA request-encryption key
   migrate --config FILE                     Initialize or migrate the deployment
   serve --config FILE                       Serve authenticated HTTP MCP
   status --config FILE                      Inspect the offline deployment revision
@@ -148,7 +152,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		defer clear(data)
 		password := strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r")
-		manager, err := adminauth.New(host.Store, 0)
+		manager, err := adminauth.New(host.Store, 0, nil)
 		if err != nil {
 			return err
 		}
@@ -160,7 +164,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		if err != nil {
 			return err
 		}
-		return encode(map[string]bool{"administrator_updated": true, "sessions_revoked": true})
+		return encode(map[string]bool{"administrator_updated": true, "tokens_expire_naturally": true})
 	}
 	if command == "recover" {
 		entries, err := mcpruntime.RecoverTransfers(ctx, mcpruntime.RecoveryOptions{StateDir: filepath.Join(cfg.DataDir, "transfers"), TransferID: id, Verify: verify, Cleanup: cleanup, ResolveUnknown: resolve, Reason: reason, MaxRecords: 4096}, mcpruntime.WithDependencies(host.Dependencies()))
@@ -217,6 +221,7 @@ func keygen(args []string, stderr io.Writer) (retErr error) {
 	flags := flag.NewFlagSet("keygen", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	path := flags.String("out", "", "new private file")
+	kind := flags.String("type", "secret", "secret (256-bit hex) or rsa (3072-bit PKCS8)")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -226,17 +231,35 @@ func keygen(args []string, stderr io.Writer) (retErr error) {
 	if *path == "" || flags.NArg() != 0 {
 		return errors.New("keygen requires --out FILE")
 	}
+	var data []byte
+	defer func() { clear(data) }()
+	switch *kind {
+	case "secret":
+		var key [32]byte
+		rand.Read(key[:])
+		defer clear(key[:])
+		data = make([]byte, 65)
+		hex.Encode(data, key[:])
+		data[64] = '\n'
+	case "rsa":
+		key, err := rsa.GenerateKey(rand.Reader, 3072)
+		if err != nil {
+			return err
+		}
+		der, err := x509.MarshalPKCS8PrivateKey(key)
+		if err != nil {
+			return err
+		}
+		defer clear(der)
+		data = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+	default:
+		return errors.New("keygen --type must be secret or rsa")
+	}
 	file, err := os.OpenFile(*path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("create secret file: %w", err)
 	}
 	defer func() { retErr = errors.Join(retErr, file.Close()) }()
-	var key [32]byte
-	rand.Read(key[:])
-	defer clear(key[:])
-	data := make([]byte, 65)
-	hex.Encode(data, key[:])
-	data[64] = '\n'
 	defer clear(data)
 	if _, err := file.Write(data); err != nil {
 		return fmt.Errorf("write secret file: %w", err)

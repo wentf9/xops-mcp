@@ -5,10 +5,14 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,10 +31,36 @@ func Close(t *testing.T, resource io.Closer) {
 		t.Errorf("close fixture: %v", err)
 	}
 }
+
+var fixtureEncryptionKey = sync.OnceValues(func() ([]byte, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, err
+	}
+	data, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: data}), nil
+})
+
 func Config(t *testing.T) config.Config {
 	t.Helper()
 	dir := t.TempDir()
 	c := config.Config{DataDir: filepath.Join(dir, "data"), MasterKeyFile: filepath.Join(dir, "master.key"), MCPTokenFile: filepath.Join(dir, "mcp.token"), Listen: "127.0.0.1:8080", ToolTimeout: 5 * time.Second, ShutdownTimeout: 2 * time.Second}
+	c.AdminJWTKeyFile = filepath.Join(dir, "admin.jwt.key")
+	c.AdminEncryptionKeyFile = filepath.Join(dir, "admin.encryption.key")
+	jwtKey := bytes.Repeat([]byte{0x56}, 32)
+	if err := os.WriteFile(c.AdminJWTKeyFile, []byte(hex.EncodeToString(jwtKey)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	private, err := fixtureEncryptionKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(c.AdminEncryptionKeyFile, private, 0600); err != nil {
+		t.Fatal(err)
+	}
 	key := bytes.Repeat([]byte{0x3f}, 32)
 	if err := os.WriteFile(c.MasterKeyFile, []byte(hex.EncodeToString(key)), 0600); err != nil {
 		t.Fatal(err)

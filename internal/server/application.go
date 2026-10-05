@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -28,6 +29,7 @@ type Application struct {
 	close        func() error
 	options      mcpruntime.HTTPOptions
 	webOptions   config.WebOptions
+	webTLS       *tls.Config
 }
 
 func NewApplication(ctx context.Context, cfg config.Config) (_ *Application, retErr error) {
@@ -36,10 +38,27 @@ func NewApplication(ctx context.Context, cfg config.Config) (_ *Application, ret
 		return nil, err
 	}
 	var webOptions config.WebOptions
+	var webTLS *tls.Config
 	if cfg.WebEnabled {
 		webOptions, err = cfg.WebOptions()
 		if err != nil {
 			return nil, err
+		}
+		if webOptions.TLSEnabled {
+			cert, err := config.ReadFile(webOptions.TLSCertFile, 64<<10, false)
+			if err != nil {
+				return nil, err
+			}
+			key, err := config.ReadFile(webOptions.TLSKeyFile, 64<<10, true)
+			if err != nil {
+				return nil, err
+			}
+			pair, err := tls.X509KeyPair(cert, key)
+			clear(key)
+			if err != nil {
+				return nil, errors.New("invalid management TLS certificate or key")
+			}
+			webTLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{pair}}
 		}
 	}
 	host, err := OpenHost(ctx, cfg)
@@ -82,9 +101,6 @@ func NewApplication(ctx context.Context, cfg config.Config) (_ *Application, ret
 	mux.Handle("/v1/transfers/", handler)
 	adminHandler := http.NotFoundHandler()
 	if cfg.WebEnabled {
-		if err := host.Store.DeleteSessions(ctx); err != nil {
-			return nil, err
-		}
 		setup := ""
 		if _, err := host.Store.Admin(ctx); errors.Is(err, storage.ErrNotFound) && cfg.AdminBootstrapTokenFile != "" {
 			data, err := config.ReadFile(cfg.AdminBootstrapTokenFile, 4098, true)
@@ -99,14 +115,19 @@ func NewApplication(ctx context.Context, cfg config.Config) (_ *Application, ret
 		} else if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
 		}
-		admin, err := api.New(host.Store, &service.Editor{Service: host.Service, Vault: host.Vault}, host.materials, tracker, api.Options{PublicURL: webOptions.PublicURL, BasePath: webOptions.BasePath, AllowedHosts: webOptions.AllowedHosts, SetupToken: setup})
+		jwtKey, encryptionKey, err := cfg.AdminKeys()
+		if err != nil {
+			return nil, err
+		}
+		defer clear(jwtKey)
+		admin, err := api.New(host.Store, &service.Editor{Service: host.Service, Vault: host.Vault}, host.materials, tracker, api.Options{PublicURL: webOptions.PublicURL, BasePath: webOptions.BasePath, AllowedHosts: webOptions.AllowedHosts, SetupToken: setup, JWTKey: jwtKey, EncryptionKey: encryptionKey})
 		if err != nil {
 			return nil, err
 		}
 		adminHandler = admin.Handler(web.Handler())
 	}
 	options.Token = ""
-	app := &Application{Host: host, Runtime: runtime, options: options, webOptions: webOptions}
+	app := &Application{Host: host, Runtime: runtime, options: options, webOptions: webOptions, webTLS: webTLS}
 	wrap := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Bound every response before routing, admission or rejection. The
@@ -165,11 +186,18 @@ func Run(ctx context.Context, cfg config.Config, diagnostics io.Writer) (retErr 
 		if err != nil {
 			return fmt.Errorf("listen for %s HTTP: %w", endpoint.name, err)
 		}
+		if endpoint.name == "Web" && app.webTLS != nil {
+			listener = tls.NewListener(listener, app.webTLS)
+		}
 		listeners = append(listeners, listener)
 		servers = append(servers, &http.Server{Handler: endpoint.handler, ReadHeaderTimeout: app.options.HeaderTimeout, ReadTimeout: app.options.BodyTimeout, WriteTimeout: app.options.StreamIdle, IdleTimeout: app.options.StreamIdle, MaxHeaderBytes: 16 << 10, BaseContext: func(net.Listener) context.Context { return work }})
 	}
 	for index, endpoint := range endpoints {
-		if _, err := fmt.Fprintf(diagnostics, "%s HTTP listening on %s\n", endpoint.name, listeners[index].Addr()); err != nil {
+		protocol := "HTTP"
+		if endpoint.name == "Web" && app.webTLS != nil {
+			protocol = "HTTPS"
+		}
+		if _, err := fmt.Fprintf(diagnostics, "%s %s listening on %s\n", endpoint.name, protocol, listeners[index].Addr()); err != nil {
 			return err
 		}
 	}

@@ -3,10 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check assets/app.js && node --check assets/naming.js",
-    "test:browser": "node test/regressions.mjs && node test/browser.mjs"
+    "check": "node --check assets/app.js && node --check assets/naming.js && node --check assets/auth.js && node test/crypto-vendor.mjs",
+    "test:browser": "node test/regressions.mjs && node test/browser.mjs && node test/browser.mjs --http",
+    "vendor:crypto": "node test/crypto-vendor.mjs --write"
   },
   "devDependencies": {
+    "asmcrypto.js": "2.3.2",
     "playwright": "1.63.0"
   }
 }

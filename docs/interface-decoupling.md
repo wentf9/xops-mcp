@@ -33,7 +33,7 @@ github.com/wentf9/xops-cli/core/ssh、sftp、auth、log
 
 策略随操作快照返回，不由另一个数据库查询拼接。只读检查、正式执行、传输启动、提交和恢复使用不同用途的 Permit；只读检查不能获取可写 SFTP client。
 
-数据库和管理员会话仍是宿主业务资源。Runtime 不拥有数据库连接池，不认识 ORM，也不会自动读取个人配置、私钥、known_hosts 或 SSH_AUTH_SOCK。
+数据库和管理员认证仍是宿主业务资源。Runtime 不拥有数据库连接池，不认识 ORM，也不会自动读取个人配置、私钥、known_hosts 或 SSH_AUTH_SOCK。
 
 ## 3. 认证、信任和环境
 

@@ -13,8 +13,11 @@ database_driver: postgres
 postgres_dsn_file: postgres.dsn
 data_dir: postgres-data
 master_key_file: master.key
+admin_jwt_key_file: admin.jwt.key
+admin_encryption_key_file: admin.encryption.key
 mcp_token_file: mcp.token
 web_enabled: true
+web_tls_enabled: false
 web_listen: 127.0.0.1:8081
 web_public_url: http://127.0.0.1:8081
 listen: 127.0.0.1:8080
@@ -39,15 +42,15 @@ bin/xops-mcp status --config .local/postgres.yaml
 bin/xops-mcp serve --config .local/postgres.yaml
 ```
 
-`migrate` 与 `serve` 在事务中初始化/升级 schema；检查和离线归档命令要求已初始化的数据库和本地数据目录，不自动升级。PostgreSQL 自有 `schema_version`，当前 v2；与 SQLite v5 无数值对应关系。失败迁移整体回滚，修复原因后可重试；较新的 schema 会被拒绝。迁移、检查和服务启动均验证部署主密钥。
+`migrate` 与 `serve` 在事务中初始化/升级 schema；检查和离线归档命令要求已初始化的数据库和本地数据目录，不自动升级。PostgreSQL 自有 `schema_version`，当前 v3；与 SQLite v6 无数值对应关系。失败迁移整体回滚，修复原因后可重试；较新的 schema 会被拒绝。迁移、检查和服务启动均验证部署主密钥。
 
 本地文件锁保护 journal；数据库级 advisory lock 防止不同本地目录或机器同时使用同一数据库。查询通过持有该锁的固定物理会话串行执行，读快照使用 repeatable read，写入使用 revision 条件和事务。清单、关联、来源、历史凭据和恢复审计使用按行数、参数数量及负载大小分块的批量写入；墓碑和凭据不可变版本检查使用集合查询，避免逐行网络往返。连接池最多一个连接，不自动切换所有权会话。SQL statement timeout 为 5 秒，lock timeout 为 2 秒；上下文取消先发送查询取消请求，使用独立且有界的事务清理上下文完成回滚，保留可用的所有权会话；网络失效仍在一秒宽限后关闭连接。每秒检查连接；连接丢失后停止准入、取消许可、退出监听并释放连接池。导致连接失效的查询取消也需要重启服务。服务重启从已提交数据恢复，不重放结果未知的业务写入或远端文件提交。
 
 ## SQLite 与 PostgreSQL 互迁
 
-只改配置或连接串不会搬迁数据。先停止唯一服务实例，在整个导出、导入、校验和 journal 复制期间保持停止。归档是版本化 AES-GCM 加密文件，需要原主密钥，包含部署 ID、revision、策略、节点及关联、未使用标签、删除墓碑、全部历史密文凭据和来源绑定、管理员密码哈希及审计 ID/事件。导出和导入会验证全部历史凭据可解密。会话不迁移，恢复后需重新登录。
+只改配置或连接串不会搬迁数据。先停止唯一服务实例，在整个导出、导入、校验和 journal 复制期间保持停止。归档是版本化 AES-GCM 加密文件，需要原主密钥，包含部署 ID、revision、策略、节点及关联、未使用标签、删除墓碑、全部历史密文凭据和来源绑定、管理员密码哈希及审计 ID/事件。导出和导入会验证全部历史凭据可解密。JWT 不存入数据库；是否继续有效取决于恢复的部署 ID、管理前缀、JWT 密钥及过期时间。
 
-1. 对源部署导出并校验数据库；另行完整备份数据目录、主密钥、MCP Token 和配置。
+1. 对源部署导出并校验数据库；另行完整备份数据目录、主密钥、MCP Token、JWT/RSA 认证密钥和配置。
 
    ```sh
    bin/xops-mcp db-export --config .local/sqlite.yaml --file /secure-backups/database.xops
@@ -93,4 +96,4 @@ go build ./...
 golangci-lint run ./...
 ```
 
-未设置测试 DSN 时 PostgreSQL 专项测试跳过；显式指定 `XOPS_TEST_BACKEND=postgres` 却缺少 DSN 时失败，设置后连接失败也会失败，CI 的两后端矩阵显式提供 PostgreSQL 18。共同业务验收覆盖服务发布、Web/MCP 可见性、真实本地 SSH/SFTP/ProxyJump、凭据旋转、审计、会话、unknown 重启恢复和 SQLite 到 PostgreSQL 迁移后的原绑定核验；存储契约覆盖事务回滚、乐观并发、四种归档方向及凭据可用性。后端专项验证迁移失败恢复、锁、取消和连接关闭；延迟回归通过真实 PostgreSQL TCP 代理增加 3 ms 响应延迟，验证 400 和 4096 节点的保存、编辑及包含历史凭据/审计的恢复，保持原有五秒操作期限。另覆盖批次后段失败的整体回滚、大凭据负载和清空清单后的永久墓碑。Linux 隔离验收另验证了普通数据库所有者的初始化/导入，以及原生 `pg_dump`/`pg_restore` 后的归档等价性。浏览器自动化继续使用 SQLite；PostgreSQL 的 Web 行为由相同 Go API 集成测试验证。此证据不包含生产主机、PostgreSQL 故障转移或原生 Windows/macOS 运行。
+未设置测试 DSN 时 PostgreSQL 专项测试跳过；显式指定 `XOPS_TEST_BACKEND=postgres` 却缺少 DSN 时失败，设置后连接失败也会失败，CI 的两后端矩阵显式提供 PostgreSQL 18。共同业务验收覆盖服务发布、Web/MCP 可见性、真实本地 SSH/SFTP/ProxyJump、凭据旋转、审计、JWT、unknown 重启恢复和 SQLite 到 PostgreSQL 迁移后的原绑定核验；存储契约覆盖事务回滚、乐观并发、四种归档方向及凭据可用性。后端专项验证迁移失败恢复、锁、取消和连接关闭；延迟回归通过真实 PostgreSQL TCP 代理增加 3 ms 响应延迟，验证 400 和 4096 节点的保存、编辑及包含历史凭据/审计的恢复，保持原有五秒操作期限。另覆盖批次后段失败的整体回滚、大凭据负载和清空清单后的永久墓碑。Linux 隔离验收另验证了普通数据库所有者的初始化/导入，以及原生 `pg_dump`/`pg_restore` 后的归档等价性。浏览器自动化继续使用 SQLite；PostgreSQL 的 Web 行为由相同 Go API 集成测试验证。此证据不包含生产主机、PostgreSQL 故障转移或原生 Windows/macOS 运行。

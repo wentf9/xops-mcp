@@ -12,6 +12,8 @@ mkdir -m 700 -p .local
 cp examples/server.yaml .local/server.yaml
 bin/xops-mcp keygen --out .local/master.key
 bin/xops-mcp keygen --out .local/mcp.token
+bin/xops-mcp keygen --out .local/admin.jwt.key
+bin/xops-mcp keygen --type rsa --out .local/admin.encryption.key
 bin/xops-mcp keygen --out .local/admin.setup
 bin/xops-mcp migrate --config .local/server.yaml
 bin/xops-mcp serve --config .local/server.yaml
@@ -31,7 +33,7 @@ Both MCP and management listeners set a default 60-second response write deadlin
 
 `data_dir/xops.db` stores the deployment ID, revision, hosts, identities, nodes, tags, policy, encrypted credentials, historical versions, connection sources and audit events. `data_dir/transfers/` owns the separate transfer journal. SQLite enables foreign keys, WAL, full synchronization and bounded busy waits. A deployment lock excludes additional instances and offline commands while the server is running.
 
-`migrate` initializes an empty database or upgrades supported schemas transactionally. `serve` also applies supported migrations. Schema v3 migrates single-jump references into the ordered `node_jumps` relation; v4 adds administrator/session tables; v5 assigns independent tag primary keys and migrates node relations while preserving names and unused tags. All preserve deployment ID, node IDs and revision. Future schemas are rejected. `status`, import previews and `recover` never create or upgrade a database; run `migrate` first.
+`migrate` initializes an empty database or upgrades supported schemas transactionally. `serve` also applies supported migrations. Schema v3 migrates single-jump references into the ordered `node_jumps` relation; v4 adds administrator/session tables; v5 assigns independent tag primary keys and migrates node relations while preserving names and unused tags. v6 removes the legacy administrator session table for JWT authentication. All preserve deployment ID, node IDs and revision. Future schemas are rejected. `status`, import previews and `recover` never create or upgrade a database; run `migrate` first.
 
 ```sh
 bin/xops-mcp status --config .local/server.yaml

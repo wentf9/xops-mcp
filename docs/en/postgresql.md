@@ -13,8 +13,11 @@ database_driver: postgres
 postgres_dsn_file: postgres.dsn
 data_dir: postgres-data
 master_key_file: master.key
+admin_jwt_key_file: admin.jwt.key
+admin_encryption_key_file: admin.encryption.key
 mcp_token_file: mcp.token
 web_enabled: true
+web_tls_enabled: false
 web_listen: 127.0.0.1:8081
 web_public_url: http://127.0.0.1:8081
 listen: 127.0.0.1:8080
@@ -39,15 +42,15 @@ bin/xops-mcp status --config .local/postgres.yaml
 bin/xops-mcp serve --config .local/postgres.yaml
 ```
 
-`migrate` and `serve` initialize/upgrade schemas transactionally. Inspection and archive commands require an initialized database/local directory and never upgrade it. PostgreSQL has its own `schema_version`, currently v2, unrelated to SQLite v5. Failed migrations roll back completely and can be retried after resolving the cause. Future schemas are rejected. Migration, inspection and server startup all verify the deployment master key.
+`migrate` and `serve` initialize/upgrade schemas transactionally. Inspection and archive commands require an initialized database/local directory and never upgrade it. PostgreSQL has its own `schema_version`, currently v3, unrelated to SQLite v6. Failed migrations roll back completely and can be retried after resolving the cause. Future schemas are rejected. Migration, inspection and server startup all verify the deployment master key.
 
 A local file lock protects the journal; a database advisory lock excludes instances using another local directory or machine. Queries run serially on the pinned physical session holding that lock. Read snapshots use repeatable read; writes use transactions and revision preconditions. Inventory, relations, sources, historical credentials and restored audit events use multi-row writes bounded by row count, parameter count and payload size. Tombstones and immutable credential versions use set-based checks to avoid per-row network round trips. The pool has at most one connection and never silently replaces the ownership session. SQL statement timeout is 5 seconds and lock timeout is 2 seconds; context cancellation sends a query-cancellation request and rolls back with a separate bounded cleanup context, preserving a healthy ownership session. Network failure still closes the connection after a one-second grace period. A one-second heartbeat detects connection loss, stops admission, cancels permits, shuts down listeners and releases the pool. Query cancellation that invalidates the connection also requires restarting the service. Restart reloads committed state without replaying uncertain business writes or remote file commits.
 
 ## Moving between SQLite and PostgreSQL
 
-Changing configuration or the connection URL does not move data. Stop the single instance throughout export, import, verification and journal copying. The versioned AES-GCM archive requires the original master key. It includes deployment ID, revision, policy, inventory/relations, unused tags, tombstones, all historical encrypted credentials and source bindings, administrator password hash, and audit IDs/events. Export and import validate decryption of every historical credential. Sessions are excluded; login is required after recovery.
+Changing configuration or the connection URL does not move data. Stop the single instance throughout export, import, verification and journal copying. The versioned AES-GCM archive requires the original master key. It includes deployment ID, revision, policy, inventory/relations, unused tags, tombstones, all historical encrypted credentials and source bindings, administrator password hash, and audit IDs/events. Export and import validate decryption of every historical credential. JWTs are not stored in the database; continued validity depends on restored deployment ID, management prefix, JWT key and expiry.
 
-1. Export and verify the source database. Separately back up its complete data directory, master key, MCP token and configuration.
+1. Export and verify the source database. Separately back up its complete data directory, master key, MCP token, JWT/RSA authentication keys and configuration.
 
    ```sh
    bin/xops-mcp db-export --config .local/sqlite.yaml --file /secure-backups/database.xops
@@ -93,4 +96,4 @@ go build ./...
 golangci-lint run ./...
 ```
 
-Without a test DSN, PostgreSQL-specific tests skip. Explicit `XOPS_TEST_BACKEND=postgres` without a DSN fails, as do connection failures when configured. CI supplies PostgreSQL 18 for both backend matrix entries. Shared acceptance covers service publication, Web/MCP visibility, real local SSH/SFTP/ProxyJump, credential rotation, audit, sessions, unknown-task recovery and original-binding verification after SQLite-to-PostgreSQL migration. Storage contracts cover rollback, optimistic concurrency, all four archive directions and credential availability. Backend-specific tests cover migration failure recovery, locks, cancellation and connection cleanup. Latency regressions use a real PostgreSQL TCP proxy adding 3 ms response latency to verify saves, edits and restores (including credential history/audit) at 400 and 4096 nodes within the existing five-second operation budget. Additional cases cover full rollback after a late batch failure, large credential payloads and permanent tombstones after clearing inventory. Isolated Linux acceptance also verifies initialization/import as a non-superuser database owner and archive equivalence after native `pg_dump`/`pg_restore`. Browser automation continues to use SQLite; PostgreSQL Web behavior uses the same Go API integration tests. This evidence excludes production hosts, PostgreSQL failover and native Windows/macOS execution.
+Without a test DSN, PostgreSQL-specific tests skip. Explicit `XOPS_TEST_BACKEND=postgres` without a DSN fails, as do connection failures when configured. CI supplies PostgreSQL 18 for both backend matrix entries. Shared acceptance covers service publication, Web/MCP visibility, real local SSH/SFTP/ProxyJump, credential rotation, audit, JWTs, unknown-task recovery and original-binding verification after SQLite-to-PostgreSQL migration. Storage contracts cover rollback, optimistic concurrency, all four archive directions and credential availability. Backend-specific tests cover migration failure recovery, locks, cancellation and connection cleanup. Latency regressions use a real PostgreSQL TCP proxy adding 3 ms response latency to verify saves, edits and restores (including credential history/audit) at 400 and 4096 nodes within the existing five-second operation budget. Additional cases cover full rollback after a late batch failure, large credential payloads and permanent tombstones after clearing inventory. Isolated Linux acceptance also verifies initialization/import as a non-superuser database owner and archive equivalence after native `pg_dump`/`pg_restore`. Browser automation continues to use SQLite; PostgreSQL Web behavior uses the same Go API integration tests. This evidence excludes production hosts, PostgreSQL failover and native Windows/macOS execution.

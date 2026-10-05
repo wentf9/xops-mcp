@@ -1,3 +1,4 @@
+import { encryptRequest } from "./auth.js";
 import { aliasLines, nameHint, validName } from "./naming.js";
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -10,6 +11,16 @@ const esc = (v) =>
       ],
   );
 const apiRoot = new URL("api/v1/", document.baseURI);
+const tokenStorageKey = "xops.admin.token:" + apiRoot.href;
+let accessToken = "", authGeneration = 0, sessionRequest = 0;
+try { accessToken = sessionStorage.getItem(tokenStorageKey) || ""; } catch { /* private browsing may disable storage */ }
+function setAccessToken(token) {
+  // Token changes invalidate every authentication result from the old state,
+  // including transitions where both the old and new token are empty.
+  authGeneration++;
+  accessToken = token;
+  try { if (token) sessionStorage.setItem(tokenStorageKey, token); else sessionStorage.removeItem(tokenStorageKey); } catch { /* memory-only login still works */ }
+}
 const S = {
   session: null,
   v: null,
@@ -100,16 +111,19 @@ function toast(text, error = false) {
   setTimeout(() => e.remove(), 6000);
 }
 async function api(path, { method = "GET", body, etag } = {}) {
+  const token = accessToken, generation = authGeneration;
+  if (body !== undefined && ["/auth/login", "/auth/setup", "/auth/password"].includes(path))
+    body = await encryptRequest(apiRoot, path.split("/").pop(), body, token);
   const headers = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (!["GET", "HEAD"].includes(method) && !path.startsWith("/auth/"))
     headers["If-Match"] = etag ?? S.etag;
-  if (S.session?.csrf) headers["X-CSRF-Token"] = S.session.csrf;
+  if (token) headers.Authorization = "Bearer " + token;
   const response = await fetch(new URL(path.slice(1), apiRoot), {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
-    credentials: "same-origin",
+    credentials: "omit",
     cache: "no-store",
   });
   const data =
@@ -118,9 +132,10 @@ async function api(path, { method = "GET", body, etag } = {}) {
       : await response.json().catch(() => ({ message: "服务响应不正确" }));
   if (!response.ok) {
     if (
-      response.status === 401 &&
+      response.status === 401 && generation === authGeneration && token === accessToken &&
       !["/auth/login", "/auth/setup", "/auth/session"].includes(path)
     ) {
+      setAccessToken("");
       S.session = null;
       S.v = null;
       if (dialog.open) dialog.close();
@@ -133,9 +148,9 @@ async function api(path, { method = "GET", body, etag } = {}) {
   return { data, etag: response.headers.get("ETag") };
 }
 async function load() {
-  const id = ++inventoryRequest;
+  const id = ++inventoryRequest, generation = authGeneration;
   const [v, ops] = await Promise.all([api("/inventory"), api("/operations")]);
-  if (id !== inventoryRequest) return;
+  if (id !== inventoryRequest || generation !== authGeneration) return;
   S.v = v.data;
   S.etag = v.etag;
   S.ops = ops.data.operations;
@@ -186,17 +201,23 @@ function updateStatus() {
     $("#config-revision").textContent = "配置版本 " + S.v.revision;
 }
 async function boot() {
+  const generation = authGeneration, request = ++sessionRequest;
+  const current = () => generation === authGeneration && request === sessionRequest;
   try {
     const { data } = await api("/auth/session");
+    if (!current()) return;
     if (!data.authenticated) {
+      setAccessToken("");
       S.session = null;
       authPage(data);
       return;
     }
     S.session = data;
     await load();
+    if (!current()) return;
     render();
   } catch (e) {
+    if (!current()) return;
     $("#app").innerHTML =
       `<main class="unavailable"><div class="brand-mark">X</div><h1>暂时无法连接</h1><p>${esc(e.message)}</p><button id="retry" class="primary">重新连接</button></main>`;
     $("#retry").onclick = boot;
@@ -222,23 +243,32 @@ function authPage(info) {
       return;
     }
     button.disabled = true;
+    // A new login attempt supersedes a pending session check immediately,
+    // before its encrypted request or response has completed.
+    let generation = ++authGeneration;
     try {
       if (setup) {
         await api("/auth/setup", {
           method: "POST",
           body: { username: x.username, password: x.password, token: x.token },
         });
+        if (generation !== authGeneration) return;
         toast("管理员已创建");
       }
       const { data } = await api("/auth/login", {
         method: "POST",
         body: { username: x.username, password: x.password },
       });
+      if (generation !== authGeneration) return;
+      setAccessToken(data.accessToken);
+      generation = authGeneration;
       S.session = data;
       form.reset();
       await load();
+      if (generation !== authGeneration) return;
       render();
     } catch (error) {
+      if (generation !== authGeneration || !form.isConnected) return;
       $(".form-error", form).textContent = error.message;
       button.disabled = false;
     }
@@ -795,15 +825,20 @@ function bind() {
       }
       const button = $("button", password);
       button.disabled = true;
+      const generation = authGeneration;
       try {
         await api("/auth/password", {
           method: "PUT",
           body: { current: x.current, next: x.next },
         });
+        if (generation !== authGeneration) return;
+        setAccessToken("");
         S.session = null;
+        S.v = null;
         toast("密码已更新，请重新登录");
         await boot();
       } catch (error) {
+        if (generation !== authGeneration || !password.isConnected) return;
         $(".form-error", password).textContent = error.message;
         button.disabled = false;
       }
@@ -894,10 +929,15 @@ document.addEventListener("click", async (e) => {
       await refreshInventory(formSnapshot());
     }
     if (action === "logout") {
-      await api("/auth/logout", { method: "POST", body: {} });
+      setAccessToken("");
       S.session = null;
+      S.v = null;
       S.audit = [];
+      inventoryRequest++;
+      if (dialog.open) dialog.close();
+      authPage({});
       await boot();
+      return;
     }
     if (action === "reconcile") {
       await mutate(
@@ -934,12 +974,14 @@ window.addEventListener("hashchange", () => {
 });
 setInterval(async () => {
   if (!S.session || document.visibilityState !== "visible") return;
+  const generation = authGeneration;
   try {
     const { data } = await api("/operations");
+    if (generation !== authGeneration) return;
     S.ops = data.operations;
     if (S.page === "operations" && $("#ops")) $("#ops").innerHTML = opsTable();
   } catch (e) {
-    if (e.status !== 401) toast("运行状态暂时无法刷新", true);
+    if (generation === authGeneration && e.status !== 401) toast("运行状态暂时无法刷新", true);
   }
 }, 5000);
 boot();

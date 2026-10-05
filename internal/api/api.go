@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -36,23 +37,24 @@ type Probes interface {
 	TestConnection(context.Context, ports.Permit, string) error
 }
 type Options struct {
-	PublicURL    string
-	BasePath     string
-	AllowedHosts []string
-	SetupToken   string
-	PasswordCost int
+	PublicURL     string
+	BasePath      string
+	AllowedHosts  []string
+	SetupToken    string
+	PasswordCost  int
+	JWTKey        []byte
+	EncryptionKey *rsa.PrivateKey
 }
 type Server struct {
 	store        Store
 	editor       *service.Editor
 	auth         *adminauth.Manager
+	cipher       *adminauth.RequestCipher
 	probes       Probes
 	tracker      *operations.Tracker
 	hosts        map[string]bool
 	scheme       string
-	cookieName   string
 	basePath     string
-	secure       bool
 	setupHash    [32]byte
 	setupEnabled bool
 	requests     chan struct{}
@@ -67,8 +69,8 @@ type attempt struct {
 	until time.Time
 }
 type authContext struct {
-	token   string
-	session storage.Session
+	token    string
+	identity adminauth.Identity
 }
 type contextKey struct{}
 
@@ -100,18 +102,19 @@ func New(store Store, editor *service.Editor, probes Probes, tracker *operations
 	if err != nil {
 		return nil, err
 	}
-	auth, err := adminauth.New(store, options.PasswordCost)
+	tokens, err := adminauth.NewTokens(options.JWTKey, editor.Service.Coordinator.DomainID(), basePath)
 	if err != nil {
 		return nil, err
 	}
-	cookieScope := editor.Service.Coordinator.DomainID()
-	if basePath != "" {
-		// Moving beneath an old cookie's path must not produce two cookies
-		// with the same name and make every authenticated request ambiguous.
-		cookieScope += "\x00" + basePath
+	auth, err := adminauth.New(store, options.PasswordCost, tokens)
+	if err != nil {
+		return nil, err
 	}
-	domain := sha256.Sum256([]byte(cookieScope))
-	s := &Server{store: store, editor: editor, auth: auth, probes: probes, tracker: tracker, hosts: map[string]bool{}, scheme: u.Scheme, secure: u.Scheme == "https", cookieName: fmt.Sprintf("xops_admin_%x", domain[:6]), requests: make(chan struct{}, 32), logins: make(chan struct{}, 2), probeSlots: make(chan struct{}, 4), attempts: map[string]attempt{}, observations: map[string]observation{}}
+	cipher, err := adminauth.NewRequestCipher(options.EncryptionKey, tokens)
+	if err != nil {
+		return nil, err
+	}
+	s := &Server{store: store, editor: editor, auth: auth, cipher: cipher, probes: probes, tracker: tracker, hosts: map[string]bool{}, scheme: u.Scheme, requests: make(chan struct{}, 32), logins: make(chan struct{}, 2), probeSlots: make(chan struct{}, 4), attempts: map[string]attempt{}, observations: map[string]observation{}}
 	s.basePath = basePath
 	for _, raw := range append([]string{u.Host}, options.AllowedHosts...) {
 		host, err := canonicalHost(raw, u.Scheme)
@@ -133,6 +136,7 @@ func New(store Store, editor *service.Editor, probes Probes, tracker *operations
 func (s *Server) Handler(assets http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/auth/session", s.session)
+	mux.HandleFunc("GET /api/v1/auth/challenge", s.challenge)
 	mux.HandleFunc("POST /api/v1/auth/setup", s.setup)
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	mux.Handle("POST /api/v1/auth/logout", s.authorize(http.HandlerFunc(s.logout)))

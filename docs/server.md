@@ -12,6 +12,8 @@ mkdir -m 700 -p .local
 cp examples/server.yaml .local/server.yaml
 bin/xops-mcp keygen --out .local/master.key
 bin/xops-mcp keygen --out .local/mcp.token
+bin/xops-mcp keygen --out .local/admin.jwt.key
+bin/xops-mcp keygen --type rsa --out .local/admin.encryption.key
 bin/xops-mcp keygen --out .local/admin.setup
 bin/xops-mcp migrate --config .local/server.yaml
 bin/xops-mcp serve --config .local/server.yaml
@@ -31,7 +33,7 @@ MCP 和管理监听器均在路由与安全校验前设置默认 60 秒响应写
 
 `data_dir/xops.db` 保存部署 ID、revision、主机、身份、节点、标签、策略、密文凭据、历史版本、连接来源和审计事件；`data_dir/transfers/` 独立保存传输 journal。SQLite 启用外键、WAL、完整同步和有界 busy 等待。部署文件锁覆盖运行服务及离线命令，不能启动第二个实例或在服务运行时导入。
 
-`migrate` 初始化空库或在事务中升级已有 schema；`serve` 也会检查并应用支持的迁移。schema v3 将单跳引用迁入有序 `node_jumps` 关系表；v4 增加管理员与会话表；v5 为已有标签生成独立主键并迁移节点关联，保留标签名称和未使用记录。迁移均保留部署 ID、节点 ID 和 revision。较新版本的 schema 会被拒绝。`status`、导入预览和 `recover` 不创建或升级数据库，需要先执行 `migrate`。
+`migrate` 初始化空库或在事务中升级已有 schema；`serve` 也会检查并应用支持的迁移。schema v3 将单跳引用迁入有序 `node_jumps` 关系表；v4 增加管理员与会话表；v5 为已有标签生成独立主键并迁移节点关联，保留标签名称和未使用记录。v6 移除旧管理员会话表，改用 JWT。迁移均保留部署 ID、节点 ID 和 revision。较新版本的 schema 会被拒绝。`status`、导入预览和 `recover` 不创建或升级数据库，需要先执行 `migrate`。
 
 ```sh
 bin/xops-mcp status --config .local/server.yaml

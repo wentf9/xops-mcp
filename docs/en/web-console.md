@@ -12,6 +12,9 @@ The console uses a separate management HTTP listener, defaulting to `127.0.0.1:8
 | `web_listen` | `127.0.0.1:8081`, separate from the MCP `listen` address |
 | `web_public_url` | Defaults to the management listen origin; the external HTTP(S) origin without a path. Required for wildcard listen addresses |
 | `web_allowed_hosts` | Additional management Host values; independent of MCP `allowed_hosts` |
+| `admin_jwt_key_file` / `admin_encryption_key_file` | Required private JWT signing and RSA decryption keys; see [authentication](admin-auth.md) |
+| `web_tls_cert_file` / `web_tls_key_file` | Native HTTPS certificate/key, used only when web_tls_enabled is true |
+| `web_tls_enabled` | Default false; enables native HTTPS with certificate/key files, or permits HTTP when disabled |
 | `web_base_path` | Empty by default, serving `/`; examples include `/console` or `/platform/ops`. Applies to pages, assets and administrator APIs |
 
 Example behind a reverse proxy:
@@ -21,6 +24,9 @@ listen: 127.0.0.1:8080
 public_url: https://mcp.example.com
 web_listen: 127.0.0.1:8081
 web_public_url: https://admin.example.com
+web_tls_enabled: false
+admin_jwt_key_file: admin.jwt.key
+admin_encryption_key_file: admin.encryption.key
 web_base_path: /console
 ```
 
@@ -30,17 +36,19 @@ Both public origins may use the same hostname. In that case combine the two sets
 
 ## Initialization and login
 
-With [server.yaml](../../examples/server.yaml), create three separate files:
+With [server.yaml](../../examples/server.yaml), create separate deployment and authentication key files:
 
 ```sh
 bin/xops-mcp keygen --out .local/master.key
 bin/xops-mcp keygen --out .local/mcp.token
+bin/xops-mcp keygen --out .local/admin.jwt.key
+bin/xops-mcp keygen --type rsa --out .local/admin.encryption.key
 bin/xops-mcp keygen --out .local/admin.setup
 bin/xops-mcp migrate --config .local/server.yaml
 bin/xops-mcp serve --config .local/server.yaml
 ```
 
-Open `http://127.0.0.1:8081/` and enter a username, password and the setup credential from `admin.setup`. The setup credential must differ from the MCP token. Only one administrator can be initialized; later setup attempts cannot overwrite it. Administrator passwords contain 12–72 bytes and are stored as bcrypt hashes.
+This example disables native TLS for HTTP; optionally enable [HTTPS](admin-auth.md). Open `http://127.0.0.1:8081/` and enter a username, password and the setup credential from `admin.setup`. The setup credential must differ from the MCP token. Only one administrator can be initialized; later setup attempts cannot overwrite it. Administrator passwords contain 12–72 bytes and are stored as bcrypt hashes.
 
 Initialization and password changes validate UTF-8 byte length, not character count. For example, `管理员新密码` occupies 18 bytes and is valid; 24 common Chinese characters usually occupy 72 bytes. Both frontend and backend reject new passwords below 12 bytes, above 72 bytes, or containing NUL, CR or LF. Confirmation must match exactly.
 
@@ -51,16 +59,16 @@ bin/xops-mcp admin-init --config .local/server.yaml --username admin --password-
 bin/xops-mcp admin-reset --config .local/server.yaml --password-file /secure/new-admin-password.txt
 ```
 
-Password files require mode 0600; `--password-stdin` is also supported. Passwords are never command-line values. Stop the service first to release its deployment lock. Initialization cannot overwrite an account; reset is for the deployment owner with access to its master key and revokes all sessions.
+Password files require mode 0600; `--password-stdin` is also supported. Passwords are never command-line values. Stop the service first to release its deployment lock. Initialization cannot overwrite an account; reset is for the deployment owner with access to its master key while existing JWTs expire naturally.
 
-Administrator cookies are HttpOnly, SameSite=Strict, scoped to `<web_base_path>/api/v1` and valid for 12 hours. An HTTPS `web_public_url` enables Secure cookies. Logout revokes the current session; password changes and server restarts revoke every administrator session. MCP and short-lived transfer credentials cannot log in to the console, and administrator cookies cannot invoke MCP tools.
+Administrators use 15-minute Bearer JWTs stored in the current tab's sessionStorage. Verification never accesses a session table; restart preserves valid JWTs. Logout clears client tokens and password changes leave issued JWTs valid until expiry. Setup, login and password changes require JWE-encrypted requests; plaintext password fields are rejected. MCP tokens, transfer credentials and administrator JWTs remain separate. See [administrator authentication](admin-auth.md) for formats, HTTPS and upgrade instructions.
 
 Links from other websites can open the console home page. The cross-site exception covers only top-level `GET`/`HEAD` document navigation to the configured console root (including its trailing-slash redirect). Host validation and validation of any supplied Origin remain active; cross-site frames, resource fetches and administrator API requests remain denied.
 
 ## Manage nodes
 
 1. Create an SSH address/port under hosts.
-2. Open the host-key dialog, fetch the key directly or paste an independently verified public key, then review its fingerprint and explicitly confirm it. Direct probing stops before SSH authentication; pasted-key previews make no connection. Neither method creates trust automatically. A confirmation is bound to the administrator session, host and configuration revision, expires in two minutes and is single-use.
+2. Open the host-key dialog, fetch the key directly or paste an independently verified public key, then review its fingerprint and explicitly confirm it. Direct probing stops before SSH authentication; pasted-key previews make no connection. Neither method creates trust automatically. A confirmation is bound to the administrator JWT, host and configuration revision, expires in two minutes and is single-use.
 3. Create a password or private-key credential, optionally with a passphrase. Reads expose metadata only. Leave secret fields empty to retain existing material during edits.
 4. Create an identity linking a remote SSH username to its credential.
 5. Create the desired tags on the tag page, then create a node with its host, identity, selected tags and ordered jump chain, then enable it. Connection tests perform SSH handshake/authentication without running a remote command; the node and its jumps must be enabled.
@@ -97,13 +105,14 @@ A committed configuration that fails publication keeps affected new operations p
 
 ## HTTP API
 
-Administrator routes are under `<web_base_path>/api/v1/` on the management port; table paths are relative to that directory. Writes require a same-origin JSON request and the session's `X-CSRF-Token`. Configuration operations additionally require `If-Match`, using the strong ETag returned by `GET /inventory`, for example `"7"`. Missing preconditions return 428 and stale revisions return 412. Credentials are write-only: reads omit passwords, private keys, passphrases, ciphertext and password hashes.
+Administrator routes are under `<web_base_path>/api/v1/` on the management port; table paths are relative to that directory. Writes require same-origin JSON and `Authorization: Bearer <JWT>`. Configuration operations additionally require `If-Match`, using the strong ETag returned by `GET /inventory`, for example `"7"`. Missing preconditions return 428 and stale revisions return 412. Credentials are write-only: reads omit passwords, private keys, passphrases, ciphertext and password hashes.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /auth/session` | Authentication/setup state and current CSRF token |
-| `POST /auth/setup`, `POST /auth/login` | `username` and `password`; setup also requires `token` |
-| `POST /auth/logout`, `PUT /auth/password` | Logout or change password with `current` and `next` |
+| `GET /auth/challenge?action=...` | RSA JWK and a 90-second challenge for login/setup/password; password changes require a Bearer JWT |
+| `GET /auth/session` | Authentication/setup state and JWT expiry |
+| `POST /auth/setup`, `POST /auth/login` | JWE `ciphertext`, decrypting to `username/password`; setup additionally includes `token` |
+| `POST /auth/logout`, `PUT /auth/password` | Client logout confirmation or JWE-encrypted `current/next` password change |
 | `GET /inventory` | Inventory, credential metadata, tags, policy and publication state |
 | `POST /hosts`, `/identities`, `/nodes`, `/credentials`, `/tags` | Create resources |
 | `PUT` / `DELETE /{resource}/{id}` | Update or delete a resource |
@@ -131,7 +140,12 @@ The [Dockerfile](../../Dockerfile) builds an embedded single-binary image runnin
 mkdir -m 700 -p examples/deployment/.secrets
 bin/xops-mcp keygen --out examples/deployment/.secrets/master.key
 bin/xops-mcp keygen --out examples/deployment/.secrets/mcp.token
+bin/xops-mcp keygen --out examples/deployment/.secrets/admin.jwt.key
+bin/xops-mcp keygen --type rsa --out examples/deployment/.secrets/admin.encryption.key
 bin/xops-mcp keygen --out examples/deployment/.secrets/admin.setup
+# Use a deployment TLS certificate/key matching web_public_url and trusted by browsers
+install -m 0644 /path/to/admin-tls.crt examples/deployment/.secrets/admin-tls.crt
+install -m 0600 /path/to/admin-tls.key examples/deployment/.secrets/admin-tls.key
 sudo chown -R 65532:65532 examples/deployment/.secrets
 docker compose -f examples/deployment/compose.yaml up -d --build
 ```
@@ -155,7 +169,7 @@ sudo tar --numeric-owner -czf /secure-backups/xops-data.tgz -C /var/lib/xops-mcp
 sudo systemctl start xops-mcp
 ```
 
-For containers, stop Compose before backing up the named volume and key mount. Restore the complete private directory with its original ownership and permissions, configure the same master key/token, run `migrate`, then start one instance. Credentials cannot be decrypted without the master key. Restart clears old administrator sessions but retains inventory, policy, password hashes, stable identities and unknown-result locks. Never run the original deployment and restored copy concurrently.
+The container example serves native HTTPS: provide a browser-trusted `admin-tls.crt` matching `web_public_url` and private `admin-tls.key` in `.secrets` with the correct owner. For containers, stop Compose before backing up the named volume and key mount. Restore the complete private directory with its original ownership and permissions, configure the same master key, MCP token, JWT signing key and RSA decryption key, run `migrate`, then start one instance. Credentials cannot be decrypted without the master key. Restart with the same JWT key preserves unexpired tokens and retains inventory, policy, password hashes, stable identities and unknown-result locks. Never run the original deployment and restored copy concurrently.
 
 ## Development verification
 

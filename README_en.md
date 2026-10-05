@@ -14,6 +14,8 @@ mkdir -m 700 -p .local
 cp examples/server.yaml .local/server.yaml
 bin/xops-mcp keygen --out .local/master.key
 bin/xops-mcp keygen --out .local/mcp.token
+bin/xops-mcp keygen --out .local/admin.jwt.key
+bin/xops-mcp keygen --type rsa --out .local/admin.encryption.key
 bin/xops-mcp keygen --out .local/admin.setup
 bin/xops-mcp migrate --config .local/server.yaml
 bin/xops-mcp serve --config .local/server.yaml
@@ -47,6 +49,7 @@ xops-cli: CLI product and current shared-core source owner
 - [Web console, API and deployment](docs/en/web-console.md)
 
 - [Server deployment and inventory import](docs/en/server.md)
+- [Administrator JWTs, HTTPS and password encryption](docs/en/admin-auth.md)
 - [PostgreSQL and offline database migration](docs/en/postgresql.md)
 - [Architecture and dependency decisions](docs/en/architecture.md)
 - [Shared interfaces and server integration](docs/en/interface-decoupling.md)

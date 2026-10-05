@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-This repository is the standalone XOps MCP server product. Read `docs/architecture.md` and `docs/roadmap.md` before implementation. M2 provides the SQLite-backed HTTP server, offline import/recovery commands, and persistent core adapters. M3 adds embedded Web management, administrator sessions, live API edits, and deployment examples. M4 adds PostgreSQL and encrypted offline database export/import/verification. Both backends remain single-instance with a local transfer journal.
+This repository is the standalone XOps MCP server product. Read `docs/architecture.md` and `docs/roadmap.md` before implementation. M2 provides the SQLite-backed HTTP server, offline import/recovery commands, and persistent core adapters. M3 adds embedded Web management, administrator authentication, live API edits, and deployment examples. M4 adds PostgreSQL and encrypted offline database export/import/verification. Both backends remain single-instance with a local transfer journal. Administrator authentication now uses 15-minute stateless JWTs and JWE password requests over configurable HTTP/HTTPS; SQLite v6 and PostgreSQL v3 remove legacy session tables. See `docs/admin-auth.md`.
 
 ## Dependency ownership
 

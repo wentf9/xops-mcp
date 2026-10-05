@@ -1,7 +1,7 @@
 package storage
 
 // Backup is the backend-neutral, versioned offline database format. Sessions
-// are intentionally excluded: moving or restarting a deployment revokes login.
+// are not persisted: JWT validity is determined by external keys and expiry.
 // Only the encrypted archive may serialize these records outside storage.
 type Backup struct {
 	Format    int

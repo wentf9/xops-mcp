@@ -34,7 +34,7 @@ func openTest(t *testing.T) (*Store, *secure.Vault, string) {
 
 func TestMigrationLockIdentityAndWrongKey(t *testing.T) {
 	s, vault, dir := openTest(t)
-	for query, want := range map[string]string{"PRAGMA journal_mode": "wal", "PRAGMA foreign_keys": "1", "PRAGMA user_version": "5"} {
+	for query, want := range map[string]string{"PRAGMA journal_mode": "wal", "PRAGMA foreign_keys": "1", "PRAGMA user_version": "6"} {
 		var got string
 		if err := s.db.QueryRowContext(t.Context(), query).Scan(&got); err != nil || got != want {
 			t.Fatalf("%s = %s: %v", query, got, err)
@@ -84,7 +84,7 @@ func TestMigrationLockIdentityAndWrongKey(t *testing.T) {
 func TestUpgradeAndFutureVersionFailClosed(t *testing.T) {
 	s, vault, dir := openTest(t)
 	restoreLegacyTagSchema(t, s)
-	if _, err := s.db.ExecContext(t.Context(), "DROP TABLE admin_sessions; DROP TABLE admin; DROP TABLE node_jumps; DROP TABLE audit_events; PRAGMA user_version=1"); err != nil {
+	if _, err := s.db.ExecContext(t.Context(), "DROP TABLE IF EXISTS admin_sessions; DROP TABLE admin; DROP TABLE node_jumps; DROP TABLE audit_events; PRAGMA user_version=1"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {
@@ -120,7 +120,7 @@ func TestUpgradeAndFutureVersionFailClosed(t *testing.T) {
 func TestV2SingleJumpMigrationPreservesNodeIdentities(t *testing.T) {
 	s, vault, dir := openTest(t)
 	restoreLegacyTagSchema(t, s)
-	_, err := s.db.ExecContext(t.Context(), `DROP TABLE admin_sessions; DROP TABLE admin; DROP TABLE node_jumps;
+	_, err := s.db.ExecContext(t.Context(), `DROP TABLE IF EXISTS admin_sessions; DROP TABLE admin; DROP TABLE node_jumps;
 INSERT INTO hosts VALUES ('host','host','127.0.0.1',22,'');
 INSERT INTO identities VALUES ('identity','identity','fixture',NULL);
 INSERT INTO nodes VALUES ('jump','jump','host','identity',NULL,'none',NULL,1);
@@ -215,5 +215,36 @@ func TestPrivateDirectoryAndNoCreationDuringPreview(t *testing.T) {
 		if err := s.Close(); err != nil {
 			t.Error(err)
 		}
+	}
+}
+
+func TestStatelessMigrationRemovesLegacySessions(t *testing.T) {
+	s, vault, dir := openTest(t)
+	if err := s.InitializeAdmin(t.Context(), storage.Admin{Username: "admin", PasswordHash: []byte("fixture-hash"), Version: "v1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(t.Context(), `CREATE TABLE admin_sessions(digest BLOB PRIMARY KEY,admin_version TEXT,expires_at INTEGER);
+INSERT INTO admin_sessions VALUES(zeroblob(32),'v1',9999999999); PRAGMA user_version=5`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	upgraded, err := Open(t.Context(), dir, vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := upgraded.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	a, err := upgraded.Admin(t.Context())
+	if err != nil || a.Version != "v1" || string(a.PasswordHash) != "fixture-hash" {
+		t.Fatal("administrator changed during auth migration", err)
+	}
+	var count int
+	if err := upgraded.db.QueryRowContext(t.Context(), "SELECT count(*) FROM sqlite_master WHERE name='admin_sessions'").Scan(&count); err != nil || count != 0 {
+		t.Fatal("legacy session state retained", err)
 	}
 }

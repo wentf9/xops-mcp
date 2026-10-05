@@ -49,6 +49,10 @@ type shortDeadlineConn struct {
 	writes chan writeResult
 }
 
+func (c *shortDeadlineConn) RemoteAddr() net.Addr {
+	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}
+}
+
 func (c *shortDeadlineConn) SetWriteDeadline(deadline time.Time) error {
 	// Keep real net.Conn deadline behavior without waiting for the production
 	// timeout. A missing or cleared deadline still leaves the write blocked.

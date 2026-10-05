@@ -6,9 +6,17 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -57,10 +65,60 @@ func run() (retErr error) {
 			retErr = errors.Join(retErr, err)
 		}
 	}()
-	cfg := config.Config{DataDir: filepath.Join(dir, "data"), MasterKeyFile: filepath.Join(dir, "master.key"), MCPTokenFile: filepath.Join(dir, "mcp.token"), AdminBootstrapTokenFile: filepath.Join(dir, "admin.setup"), WebEnabled: true, Listen: mcpListener.Addr().String(), PublicURL: "http://" + mcpListener.Addr().String(), WebListen: listener.Addr().String(), WebPublicURL: "http://" + listener.Addr().String(), WebBasePath: "/console", ToolTimeout: 10 * time.Second, ShutdownTimeout: 3 * time.Second}
+	cfg := config.Config{DataDir: filepath.Join(dir, "data"), MasterKeyFile: filepath.Join(dir, "master.key"), MCPTokenFile: filepath.Join(dir, "mcp.token"), AdminBootstrapTokenFile: filepath.Join(dir, "admin.setup"), WebEnabled: true, Listen: mcpListener.Addr().String(), PublicURL: "http://" + mcpListener.Addr().String(), WebListen: listener.Addr().String(), WebPublicURL: "https://" + listener.Addr().String(), WebBasePath: "/console", ToolTimeout: 10 * time.Second, ShutdownTimeout: 3 * time.Second}
+	cfg.WebTLSEnabled = os.Getenv("XOPS_TEST_WEB_TLS") != "0"
+	cfg.AdminJWTKeyFile = filepath.Join(dir, "admin.jwt.key")
+	cfg.AdminEncryptionKeyFile = filepath.Join(dir, "admin.encryption.key")
+	cfg.WebTLSCertFile = filepath.Join(dir, "admin-tls.crt")
+	cfg.WebTLSKeyFile = filepath.Join(dir, "admin-tls.key")
+	tlsKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return err
+	}
+	template := &x509.Certificate{SerialNumber: big.NewInt(1), IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)}, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(3 * time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &tlsKey.PublicKey, tlsKey)
+	if err != nil {
+		return err
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(tlsKey)
+	if err != nil {
+		return err
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+	if err := os.WriteFile(cfg.WebTLSCertFile, certPEM, 0600); err != nil {
+		return err
+	}
+	if err := os.WriteFile(cfg.WebTLSKeyFile, keyPEM, 0600); err != nil {
+		return err
+	}
+	certificate, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return err
+	}
+	if cfg.WebTLSEnabled {
+		listener = tls.NewListener(listener, &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate}})
+	} else {
+		_, port, err := net.SplitHostPort(listener.Addr().String())
+		if err != nil {
+			return err
+		}
+		cfg.WebPublicURL = "http://xops-http.test:" + port
+	}
+	encryptionKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(encryptionKey)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(cfg.AdminEncryptionKeyFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0600); err != nil {
+		return err
+	}
 	setup := secure.ID() + secure.ID()
 	token := secure.ID() + secure.ID()
-	for path, value := range map[string]string{cfg.MasterKeyFile: secure.ID() + secure.ID(), cfg.MCPTokenFile: token, cfg.AdminBootstrapTokenFile: setup} {
+	for path, value := range map[string]string{cfg.AdminJWTKeyFile: secure.ID() + secure.ID(), cfg.MasterKeyFile: secure.ID() + secure.ID(), cfg.MCPTokenFile: token, cfg.AdminBootstrapTokenFile: setup} {
 		if err := os.WriteFile(path, []byte(value), 0600); err != nil {
 			return err
 		}
