@@ -3,6 +3,14 @@
 data_dir: data
 master_key_file: master.key
 mcp_token_file: mcp.token
+web_enabled: true
+# Management never shares the MCP listener. Prefix applies to UI/assets/API.
+web_listen: 127.0.0.1:8081
+web_public_url: http://127.0.0.1:8081
+web_base_path: ""
+# Generate a distinct token for the first administrator setup. Remove the file
+# after initialization, or omit this setting and use the offline admin-init command.
+admin_bootstrap_token_file: admin.setup
 listen: 127.0.0.1:8080
 # Required for a LAN listener or a reverse proxy; use the externally reachable
 # origin, without /mcp or a path prefix.

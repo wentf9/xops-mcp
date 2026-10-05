@@ -1,8 +1,8 @@
 # 架构与跨仓库依赖复用
 
-共享 core 已通过固定远端版本接入；core 消费与依赖边界检查已纳入常规 CI。M2 SQLite 与独立 HTTP 服务已实现，Web 与 PostgreSQL 仍属后续阶段，版本与证据见[依赖基线](reuse-baseline.md)，接入契约见[接口解耦](interface-decoupling.md)。
+共享 core 已通过固定远端版本接入；core 消费与依赖边界检查已纳入常规 CI。M2 SQLite 与独立 HTTP 服务及 M3 Web 管理已实现，PostgreSQL 仍属后续阶段，版本与证据见[依赖基线](reuse-baseline.md)，接入契约见[接口解耦](interface-decoupling.md)。
 
-状态：共享接口和 M2 独立服务已实现；Web、管理 API、管理员会话和 PostgreSQL 尚未实现。运行说明见[服务指南](server.md)。
+状态：共享接口、独立服务、Web、管理 API 与管理员会话已实现；PostgreSQL 尚未实现。运行说明见[服务指南](server.md)。
 
 上游公共实现已收敛到可独立抽取的 `xops-cli/core/`，CLI 直接导入 core，必要的宿主装配留在应用层。消费者的所有生产和测试代码仅使用上游 core 包；旧入口探针已删除。详细接口、更新一致性和验收见[公共接口解耦](interface-decoupling.md)。
 
@@ -10,7 +10,7 @@
 
 `xops-cli` 保留交互式 CLI/TUI、本地 YAML 与凭据库、OpenSSH 集成和现有 MCP 入口。`xops-mcp` 负责长期运行的服务端、Web 控制台、管理 API、业务数据库、服务端凭据与部署。
 
-两个产品独立发布。服务端使用 Go 1.26+，前后端同仓库，计划通过 `go:embed` 将 Web 构建产物打包进单个程序。首版以 Linux 单实例和 Streamable HTTP 为目标，保留上游 stdio 行为；不扩展 HTTP 隧道或 SOCKS 工具。
+两个产品独立发布。服务端使用 Go 1.26+，前后端同仓库，通过 `go:embed` 将 Web 静态资源打包进单个程序。首版以 Linux 单实例和 Streamable HTTP 为目标，保留上游 stdio 行为；不扩展 HTTP 隧道或 SOCKS 工具。
 
 ## 2. 决策：单向模块依赖，一份共享内核
 
@@ -26,7 +26,7 @@ flowchart TD
     Adapters --> DB[SQLite / PostgreSQL]
 ```
 
-共享内核暂时保留在 `xops-cli` Go module 中。图中为已实现的公共复用路径；SQLite 适配器和服务入口已交付，Web 与 PostgreSQL 按后续阶段实施。新仓库的独立性体现为独立入口、业务存储、Web 和发布周期；共享协议与执行实现依靠版本化依赖复用。
+共享内核暂时保留在 `xops-cli` Go module 中。图中为已实现的公共复用路径；SQLite 适配器、服务入口和 Web 管理已交付，PostgreSQL 按后续阶段实施。新仓库的独立性体现为独立入口、业务存储、Web 和发布周期；共享协议与执行实现依靠版本化依赖复用。
 
 不复制 `pkg/mcpserver`、`pkg/ssh` 或 `pkg/sftp` 建立长期分叉，不使用 Git submodule，不提交指向相邻目录的 `replace`。`xops-cli` 的源码、模块及常规 CI 均不得依赖新服务仓库，避免依赖环和私有服务逻辑侵入 CLI。
 
@@ -60,7 +60,7 @@ flowchart TD
 - SSH 通过完整 ConnectionPlan 与版本化租约复用连接；SecretResolver、KeySource 和 HostKeyVerifier 由宿主注入，不自动读取个人目录或凭据。
 - 文件任务保留原授权绑定、v1/v2 journal 和未知提交锁；流式传输与提交在同一个连接上交接许可。
 - CLI 配置、具体凭据库、OpenSSH 发现和 Windows 输入桥留在 internal/mcphost、internal/sshenv 及应用适配器，core 编译图不包含它们。
-- M2 已实现数据库事务、稳定域/版本、凭据加密和主机信任存储，并通过这些接口接入。服务端测试覆盖真实本地协议；Web 管理仍属后续阶段。
+- M2 已实现数据库事务、稳定域/版本、凭据加密和主机信任存储，并通过这些接口接入。服务端测试覆盖真实本地协议；M3 管理接口共用同一 service 与发布协调器。
 
 ## 5. 共享内核的接入契约（已实现）
 
@@ -92,7 +92,7 @@ internal/dependencycheck/ 已有的依赖边界与版本检查
 web/                    Web 源码与嵌入资源
 ```
 
-`cmd/xops-mcp`、`internal/{command,config,server,service,adapters,storage,secure,importer}`、消费者和依赖检查已建立；`internal/api`、PostgreSQL 和 Web 仍属计划。Web API 和 MCP 共用 service 层规则。HTTP 路由由宿主组合：`/mcp` 和 `/v1/transfers/` 使用共享 handler；`/api/v1/` 和 Web 静态路由计划由新仓库提供，目前没有这些路由。各自鉴权独立，不能把管理 Cookie、MCP Token 和短期传输凭据混为一类。
+`cmd/xops-mcp`、`internal/{command,config,server,service,adapters,storage,secure,importer}`、消费者和依赖检查已建立；`internal/api`、`internal/adminauth`、`internal/operations` 和嵌入式 Web 已实现，PostgreSQL 仍属计划。Web API 和 MCP 共用 service 层规则。HTTP 使用两个独立监听器：MCP 端口仅将 `/mcp` 和 `/v1/transfers/` 交给共享 handler；管理端口提供带可配置 `web_base_path` 的页面、资源和 `/api/v1/`。管理监听默认仅绑定回环地址，不继承 MCP 的 Host/origin 配置。各自鉴权独立，不能把管理 Cookie、MCP Token 和短期传输凭据混为一类。
 
 共享包不得 import 新服务的数据库、HTTP API、前端、ORM 或依赖注入容器。
 
@@ -100,15 +100,15 @@ web/                    Web 源码与嵌入资源
 
 SQLite 为首个实现，文件位于持久化本地数据目录，启用外键、WAL 和有界 busy 等待；应用层仍需事务、超时和并发控制。PostgreSQL 是明确的第二种后端；首期不承诺任意 SQL 数据库兼容。
 
-已实现 hosts、identities、nodes、tags、credential metadata/ciphertext、policies 和 audit events；admin sessions 属于 M3。节点使用稳定的不透明 ID，地址、端口、用户名和别名均可编辑；导入时记录旧 selector 到新 ID 的映射。
+已实现 hosts、identities、nodes、tags、credential metadata/ciphertext、policies 和 audit events；M3 已增加 admin 与 admin_sessions；schema v5 将标签改为独立的 `tags(id,name)` 记录，节点通过 `node_tags(node_id,tag_id)` 外键关联。标签可独立创建，重命名保持主键和关联，删除时仅解除节点关联。节点使用稳定的不透明 ID，地址、端口、用户名和别名均可编辑；导入时记录旧 selector 到新 ID 的映射。
 
-存储接口按业务操作设计，支持跨节点、身份、凭据引用的原子事务和版本前置条件。M2 导入使用 expected revision，Web 更新计划使用 revision/ETag；冲突返回明确错误。避免仅提供通用表 CRUD 或把完整 YAML 存成单个 blob。
+存储接口按业务操作设计，支持跨节点、身份、凭据引用的原子事务和版本前置条件。M2 导入使用 expected revision，Web 更新使用 revision/ETag；冲突返回明确错误。避免仅提供通用表 CRUD 或把完整 YAML 存成单个 blob。
 
 数据库事务提交后发布新的配置版本；发布前不向调用者宣称新配置已生效。若发布失败，停止受影响的新操作并重试加载已提交版本；不能使用旧视图继续接纳操作，也不能盲目重复数据库变更。进程重启从数据库重建当前版本。
 
 密码、私钥及 passphrase 使用带版本的认证加密，主密钥由数据库外的部署配置提供。备份方案同时明确密钥备份和恢复责任。数据库持有密文不等于已解决运行时 SSH 密钥加载。
 
-M2 使用独立 MCP Token；M3 计划使用单管理员会话和 CSRF 防护，凭据读取只返回元数据，不扩展多租户或 OAuth。
+M2 使用独立 MCP Token；M3 使用单管理员会话和 CSRF 防护，凭据读取只返回元数据，不扩展多租户或 OAuth。
 
 传输 journal 初期继续使用共享实现的专属本地目录；数据库保存业务实体不会自动替代它。备份/恢复应协调业务数据库、密钥和 journal。`unknown` 表示远端提交结果不确定，不能自动重试或把它转换成成功。多实例部署不在首版范围内；外部数据库无法自动共享 MCP 会话、SSH 连接或 journal 所有权。
 

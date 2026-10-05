@@ -27,6 +27,7 @@ type Document struct {
 	Hosts       map[string]Host       `yaml:"hosts"`
 	Identities  map[string]Identity   `yaml:"identities"`
 	Nodes       map[string]Node       `yaml:"nodes"`
+	Tags        []string              `yaml:"tags,omitempty"`
 	Credentials map[string]Credential `yaml:"credentials"`
 	Policy      *policy.Config        `yaml:"policy,omitempty"`
 }
@@ -59,6 +60,7 @@ type Options struct{ IncludeSecrets, Replace bool }
 type Report struct {
 	Revision          uint64            `json:"expected_revision"`
 	NodeIDs           map[string]string `json:"node_ids"`
+	TagIDs            map[string]string `json:"tag_ids,omitempty"`
 	Removed           []string          `json:"removed_node_ids,omitempty"`
 	CredentialChanges []string          `json:"credential_changes,omitempty"`
 	Warnings          []string          `json:"warnings,omitempty"`
@@ -106,7 +108,7 @@ func newID(base storage.Inventory, kind, name string) string {
 }
 
 func Plan(base storage.Inventory, doc Document, vault *secure.Vault, options Options) (candidate storage.Inventory, report Report, retErr error) {
-	report = Report{Revision: base.Revision, NodeIDs: map[string]string{}}
+	report = Report{Revision: base.Revision, NodeIDs: map[string]string{}, TagIDs: map[string]string{}}
 	defer func() {
 		if retErr != nil {
 			report.Conflicts = append(report.Conflicts, retErr.Error())
@@ -116,6 +118,10 @@ func Plan(base storage.Inventory, doc Document, vault *secure.Vault, options Opt
 	candidate.Hosts = maps.Clone(base.Hosts)
 	candidate.Identities = maps.Clone(base.Identities)
 	candidate.Nodes = maps.Clone(base.Nodes)
+	candidate.Tags = maps.Clone(base.Tags)
+	if candidate.Tags == nil {
+		candidate.Tags = map[string]storage.Tag{}
+	}
 	candidate.Credentials = maps.Clone(base.Credentials)
 	candidate.Deleted = maps.Clone(base.Deleted)
 	if options.Replace {
@@ -124,6 +130,22 @@ func Plan(base storage.Inventory, doc Document, vault *secure.Vault, options Opt
 		candidate.Nodes = map[string]storage.Node{}
 	}
 	hosts, identities, nodes, credentials := map[string]string{}, map[string]string{}, map[string]string{}, map[string]string{}
+	tags := map[string]string{}
+	for id, tag := range base.Tags {
+		tags[tag.Name] = id
+	}
+	resolveTag := func(name string) string {
+		if tags[name] == "" {
+			tags[name] = newID(base, "tag", name)
+		}
+		id := tags[name]
+		report.TagIDs[name] = id
+		candidate.Tags[id] = storage.Tag{ID: id, Name: name}
+		return id
+	}
+	for _, tag := range doc.Tags {
+		resolveTag(tag)
+	}
 	for id, v := range base.Hosts {
 		hosts[v.Name] = id
 	}
@@ -160,7 +182,7 @@ func Plan(base storage.Inventory, doc Document, vault *secure.Vault, options Opt
 			credentials[name] = newID(base, "credential", name)
 		}
 		material := secure.Material{Password: []byte(input.Password), PrivateKey: []byte(input.PrivateKey), Passphrase: []byte(input.Passphrase)}
-		if err := validateMaterial(input.Kind, material); err != nil {
+		if err := secure.ValidateMaterial(input.Kind, material); err != nil {
 			material.Clear()
 			return candidate, report, fmt.Errorf("credential %q: %w", name, err)
 		}
@@ -211,10 +233,14 @@ func Plan(base storage.Inventory, doc Document, vault *secure.Vault, options Opt
 		if input.PrivilegeCredential != "" && credentials[input.PrivilegeCredential] == "" {
 			return candidate, report, fmt.Errorf("node %q references missing privilege credential", name)
 		}
-		aliases, tags := slices.Clone(input.Aliases), slices.Clone(input.Tags)
+		aliases := slices.Clone(input.Aliases)
+		var tagIDs []string
+		for _, tag := range input.Tags {
+			tagIDs = append(tagIDs, resolveTag(tag))
+		}
 		slices.Sort(aliases)
-		slices.Sort(tags)
-		n := storage.Node{ID: id, Name: name, HostID: hosts[input.Host], IdentityID: identities[input.Identity], JumpIDs: jumps, Aliases: slices.Compact(aliases), Tags: slices.Compact(tags), Disabled: input.Disabled, SudoMode: input.SudoMode, PrivilegeCredentialID: credentials[input.PrivilegeCredential]}
+		slices.Sort(tagIDs)
+		n := storage.Node{ID: id, Name: name, HostID: hosts[input.Host], IdentityID: identities[input.Identity], JumpIDs: jumps, Aliases: slices.Compact(aliases), TagIDs: slices.Compact(tagIDs), Disabled: input.Disabled, SudoMode: input.SudoMode, PrivilegeCredentialID: credentials[input.PrivilegeCredential]}
 		if candidate.Hosts[n.HostID].HostKey == "" || candidate.Identities[n.IdentityID].CredentialID == "" {
 			n.Disabled = true
 			report.Warnings = append(report.Warnings, fmt.Sprintf("node %q imported disabled: credential or host key is not configured", name))
@@ -266,29 +292,4 @@ func Plan(base storage.Inventory, doc Document, vault *secure.Vault, options Opt
 		return candidate, report, err
 	}
 	return candidate, report, nil
-}
-
-func validateMaterial(kind string, material secure.Material) error {
-	switch kind {
-	case "password":
-		if len(material.Password) == 0 || len(material.Password) > 64<<10 || len(material.PrivateKey) > 0 || len(material.Passphrase) > 0 {
-			return errors.New("password material must contain only a nonempty password up to 64 KiB")
-		}
-	case "key":
-		if len(material.Password) > 0 || len(material.PrivateKey) == 0 || len(material.PrivateKey) > 128<<10 || len(material.Passphrase) > 64<<10 {
-			return errors.New("invalid private key material size or fields")
-		}
-		var err error
-		if len(material.Passphrase) > 0 {
-			_, err = cryptoSSH.ParsePrivateKeyWithPassphrase(material.PrivateKey, material.Passphrase)
-		} else {
-			_, err = cryptoSSH.ParsePrivateKey(material.PrivateKey)
-		}
-		if err != nil {
-			return errors.New("private key or passphrase is invalid")
-		}
-	default:
-		return errors.New("credential kind must be password or key")
-	}
-	return nil
 }

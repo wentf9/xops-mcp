@@ -13,9 +13,11 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	mcpruntime "github.com/wentf9/xops-cli/core/mcp/runtime"
+	"github.com/wentf9/xops-mcp/internal/adminauth"
 	"github.com/wentf9/xops-mcp/internal/config"
 	"github.com/wentf9/xops-mcp/internal/importer"
 	"github.com/wentf9/xops-mcp/internal/server"
@@ -28,6 +30,10 @@ Commands:
   migrate --config FILE                     Initialize or migrate the deployment
   serve --config FILE                       Serve authenticated HTTP MCP
   status --config FILE                      Inspect the offline deployment revision
+  admin-init --config FILE --password-file FILE [--username admin]
+  admin-reset --config FILE --password-file FILE
+         [--password-stdin instead of --password-file]
+                                            Initialize/reset the single administrator
   import --config FILE --file FILE           Preview a one-way inventory import
          [--format server|xops-cli] [--include-secrets] [--replace]
          [--apply --expected-revision N]     Apply the reviewed revision atomically
@@ -49,7 +55,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	command := args[0]
 	switch command {
-	case "serve", "migrate", "status", "import", "recover":
+	case "serve", "migrate", "status", "import", "recover", "admin-init", "admin-reset":
 	default:
 		return errors.New("unknown command; use xops-mcp help")
 	}
@@ -58,6 +64,15 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	configPath := flags.String("config", "", "deployment configuration file")
 	var file, format, expected, id, reason string
 	var apply, dryRun, includeSecrets, replace, verify, cleanup, resolve bool
+	var username, passwordFile string
+	var passwordStdin bool
+	if command == "admin-init" || command == "admin-reset" {
+		flags.StringVar(&passwordFile, "password-file", "", "private file containing the administrator password")
+		flags.BoolVar(&passwordStdin, "password-stdin", false, "read the administrator password from stdin")
+		if command == "admin-init" {
+			flags.StringVar(&username, "username", "admin", "administrator username")
+		}
+	}
 	if command == "import" {
 		flags.StringVar(&file, "file", "", "inventory file or - for stdin")
 		flags.StringVar(&format, "format", "server", "server or xops-cli")
@@ -86,6 +101,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if command == "import" && (file == "" || apply && dryRun || apply && expected == "") {
 		return errors.New("import requires --file; --apply requires --expected-revision and excludes --dry-run")
 	}
+	if (command == "admin-init" || command == "admin-reset") && (passwordFile == "") == !passwordStdin {
+		return errors.New("select exactly one of --password-file or --password-stdin")
+	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
@@ -105,6 +123,32 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	defer func() { retErr = errors.Join(retErr, host.Close()) }()
 	encode := func(value any) error { return json.NewEncoder(stdout).Encode(value) }
+	if command == "admin-init" || command == "admin-reset" {
+		var data []byte
+		if passwordStdin {
+			data, err = readStdin(ctx, stdin, 75)
+		} else {
+			data, err = config.ReadFile(passwordFile, 74, true)
+		}
+		if err != nil {
+			return err
+		}
+		defer clear(data)
+		password := strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r")
+		manager, err := adminauth.New(host.Store, 0)
+		if err != nil {
+			return err
+		}
+		if command == "admin-init" {
+			err = manager.Initialize(ctx, username, password)
+		} else {
+			err = manager.ResetPassword(ctx, password)
+		}
+		if err != nil {
+			return err
+		}
+		return encode(map[string]bool{"administrator_updated": true, "sessions_revoked": true})
+	}
 	if command == "recover" {
 		entries, err := mcpruntime.RecoverTransfers(ctx, mcpruntime.RecoveryOptions{StateDir: filepath.Join(cfg.DataDir, "transfers"), TransferID: id, Verify: verify, Cleanup: cleanup, ResolveUnknown: resolve, Reason: reason, MaxRecords: 4096}, mcpruntime.WithDependencies(host.Dependencies()))
 		return errors.Join(err, encode(entries))

@@ -2,8 +2,12 @@
 /dist/
 /data/
 /.local/
+/examples/deployment/.secrets/
+# Also ignore the old directory or its temporary migration symlink.
+/examples/deployment/secrets
 /web/node_modules/
 /web/dist/
+/web/test-results/
 go.work
 go.work.sum
 *.test

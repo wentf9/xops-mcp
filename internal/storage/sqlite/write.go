@@ -108,6 +108,11 @@ func (s *Store) Save(ctx context.Context, expected uint64, v storage.Inventory, 
 			return err
 		}
 	}
+	for _, tag := range v.Tags {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO tags(id,name) VALUES(?,?)", tag.ID, tag.Name); err != nil {
+			return err
+		}
+	}
 	for _, n := range v.Nodes {
 		if _, err := tx.ExecContext(ctx, "INSERT INTO nodes VALUES(?,?,?,?,?,?,?,?)", n.ID, n.Name, n.HostID, n.IdentityID, nil, n.SudoMode, nullable(n.PrivilegeCredentialID), n.Disabled); err != nil {
 			return err
@@ -122,10 +127,7 @@ func (s *Store) Save(ctx context.Context, expected uint64, v storage.Inventory, 
 				return err
 			}
 		}
-		for _, tag := range n.Tags {
-			if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO tags VALUES(?)", tag); err != nil {
-				return err
-			}
+		for _, tag := range n.TagIDs {
 			if _, err := tx.ExecContext(ctx, "INSERT INTO node_tags VALUES(?,?)", n.ID, tag); err != nil {
 				return err
 			}

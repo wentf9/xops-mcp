@@ -1,0 +1,12 @@
+{
+  "name": "xops-mcp-console-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check assets/app.js && node --check assets/naming.js",
+    "test:browser": "node test/regressions.mjs && node test/browser.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

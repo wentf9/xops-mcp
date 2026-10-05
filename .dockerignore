@@ -1,0 +1,20 @@
+.git
+bin
+dist
+data
+.local
+web/node_modules
+web/test-results
+go.work
+go.work.sum
+**/*.db
+**/*.db-wal
+**/*.db-shm
+# Deployment files are runtime inputs. Prune their parent so legacy builders
+# never try to read the UID 65532-owned private secrets directory.
+examples/deployment
+**/*.key
+**/*.token
+**/*.setup
+.env
+.env.*

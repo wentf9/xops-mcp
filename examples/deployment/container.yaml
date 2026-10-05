@@ -1,0 +1,12 @@
+data_dir: /var/lib/xops-mcp/data
+master_key_file: /run/secrets/xops/master.key
+mcp_token_file: /run/secrets/xops/mcp.token
+admin_bootstrap_token_file: /run/secrets/xops/admin.setup
+web_enabled: true
+web_listen: 0.0.0.0:8081
+web_public_url: http://127.0.0.1:8081
+web_base_path: /console
+listen: 0.0.0.0:8080
+public_url: http://127.0.0.1:8080
+tool_timeout: 5m
+shutdown_timeout: 45s

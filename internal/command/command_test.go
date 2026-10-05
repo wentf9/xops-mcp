@@ -15,8 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wentf9/xops-mcp/internal/adminauth"
 	"github.com/wentf9/xops-mcp/internal/command"
 	"github.com/wentf9/xops-mcp/internal/config"
+	"github.com/wentf9/xops-mcp/internal/server"
 	"github.com/wentf9/xops-mcp/internal/testutil"
 	"go.uber.org/goleak"
 	"gopkg.in/yaml.v3"
@@ -235,5 +237,45 @@ func TestFailedRuntimeConstructionReleasesDeployment(t *testing.T) {
 	}
 	if _, err := run(t, "status", "--config", path); err != nil {
 		t.Fatalf("failed startup retained resources: %v", err)
+	}
+}
+
+func TestOfflineAdministratorInitializationAndReset(t *testing.T) {
+	cfg, path := configuration(t)
+	if _, err := run(t, "migrate", "--config", path); err != nil {
+		t.Fatal(err)
+	}
+	passwordFile := filepath.Join(filepath.Dir(path), "password.txt")
+	if err := os.WriteFile(passwordFile, []byte("synthetic-initial-admin-password\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := run(t, "admin-init", "--config", path, "--password-file", passwordFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "synthetic-initial-admin-password") {
+		t.Fatal("initialization printed password")
+	}
+	if _, err := run(t, "admin-init", "--config", path, "--password-file", passwordFile); err == nil {
+		t.Fatal("initialization overwrote administrator")
+	}
+	var output bytes.Buffer
+	if err := command.Run(t.Context(), []string{"admin-reset", "--config", path, "--password-stdin"}, strings.NewReader("synthetic-reset-admin-password\n"), &output, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	host, err := server.OpenExistingHost(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer testutil.Close(t, host)
+	manager, err := adminauth.New(host.Store, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Login(t.Context(), "admin", "synthetic-initial-admin-password"); !errors.Is(err, adminauth.ErrUnauthorized) {
+		t.Fatal("old password survived reset")
+	}
+	if _, err := manager.Login(t.Context(), "admin", "synthetic-reset-admin-password"); err != nil {
+		t.Fatal(err)
 	}
 }

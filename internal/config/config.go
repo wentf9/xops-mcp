@@ -18,15 +18,21 @@ import (
 )
 
 type Config struct {
-	DataDir         string        `yaml:"data_dir"`
-	MasterKeyFile   string        `yaml:"master_key_file"`
-	MCPTokenFile    string        `yaml:"mcp_token_file"`
-	Listen          string        `yaml:"listen"`
-	PublicURL       string        `yaml:"public_url"`
-	AllowedHosts    []string      `yaml:"allowed_hosts"`
-	AllowedOrigins  []string      `yaml:"allowed_origins"`
-	ToolTimeout     time.Duration `yaml:"tool_timeout"`
-	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
+	DataDir                 string        `yaml:"data_dir"`
+	MasterKeyFile           string        `yaml:"master_key_file"`
+	MCPTokenFile            string        `yaml:"mcp_token_file"`
+	Listen                  string        `yaml:"listen"`
+	PublicURL               string        `yaml:"public_url"`
+	AllowedHosts            []string      `yaml:"allowed_hosts"`
+	AllowedOrigins          []string      `yaml:"allowed_origins"`
+	ToolTimeout             time.Duration `yaml:"tool_timeout"`
+	ShutdownTimeout         time.Duration `yaml:"shutdown_timeout"`
+	WebEnabled              bool          `yaml:"web_enabled"`
+	WebListen               string        `yaml:"web_listen"`
+	WebPublicURL            string        `yaml:"web_public_url"`
+	WebAllowedHosts         []string      `yaml:"web_allowed_hosts"`
+	WebBasePath             string        `yaml:"web_base_path"`
+	AdminBootstrapTokenFile string        `yaml:"admin_bootstrap_token_file"`
 }
 
 func Load(path string) (Config, error) {
@@ -34,7 +40,7 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	c := Config{Listen: "127.0.0.1:8080", ToolTimeout: 5 * time.Minute, ShutdownTimeout: 45 * time.Second}
+	c := Config{Listen: "127.0.0.1:8080", ToolTimeout: 5 * time.Minute, ShutdownTimeout: 45 * time.Second, WebEnabled: true}
 	d := yaml.NewDecoder(bytes.NewReader(data))
 	d.KnownFields(true)
 	if err := d.Decode(&c); err != nil {
@@ -51,7 +57,7 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	for _, value := range []*string{&c.DataDir, &c.MasterKeyFile, &c.MCPTokenFile} {
+	for _, value := range []*string{&c.DataDir, &c.MasterKeyFile, &c.MCPTokenFile, &c.AdminBootstrapTokenFile} {
 		if *value != "" && !filepath.IsAbs(*value) {
 			*value = filepath.Join(base, *value)
 		}
@@ -65,6 +71,11 @@ func Load(path string) (Config, error) {
 	}
 	if c.ToolTimeout <= 0 || c.ShutdownTimeout <= 0 {
 		return c, errors.New("server timeouts must be positive")
+	}
+	if c.WebEnabled {
+		if _, err := c.WebOptions(); err != nil {
+			return c, err
+		}
 	}
 	return c, nil
 }

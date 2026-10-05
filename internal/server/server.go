@@ -4,14 +4,10 @@ package server
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
-	"net"
 	"sync"
 	"time"
 
 	"github.com/wentf9/xops-cli/core/mcp/ports"
-	mcpruntime "github.com/wentf9/xops-cli/core/mcp/runtime"
 	"github.com/wentf9/xops-cli/core/mcp/sshexec"
 	"github.com/wentf9/xops-cli/core/ssh"
 	"github.com/wentf9/xops-mcp/internal/adapters/xops"
@@ -26,6 +22,7 @@ type Host struct {
 	Service      *service.Service
 	Vault        *secure.Vault
 	dependencies ports.Dependencies
+	materials    *xops.Materials
 	close        func() error
 }
 
@@ -72,6 +69,7 @@ func openHost(ctx context.Context, cfg config.Config, allowMigration bool) (_ *H
 	}
 	h := &Host{Store: store, Service: svc, Vault: vault}
 	materials := &xops.Materials{Store: store, Vault: vault, DomainID: svc.Coordinator.DomainID()}
+	h.materials = materials
 	h.dependencies = ports.Dependencies{State: svc.Coordinator, Gate: svc.Coordinator, Audit: store, NewBackend: func(ctx context.Context) (ports.Backend, error) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -94,28 +92,3 @@ func openHost(ctx context.Context, cfg config.Config, allowMigration bool) (_ *H
 // while the host owns the coordinator, audit repository, and database.
 func (h *Host) Dependencies() ports.Dependencies { return h.dependencies }
 func (h *Host) Close() error                     { return h.close() }
-
-func Run(ctx context.Context, cfg config.Config, diagnostics io.Writer) (retErr error) {
-	options, err := cfg.HTTPOptions()
-	if err != nil {
-		return err
-	}
-	host, err := OpenHost(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	defer func() { retErr = errors.Join(retErr, host.Close()) }()
-	runtime, err := mcpruntime.NewRuntime(ctx, mcpruntime.WithDependencies(host.Dependencies()), mcpruntime.WithHTTP(options))
-	if err != nil {
-		return err
-	}
-	defer func() { retErr = errors.Join(retErr, runtime.Close()) }()
-	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Listen)
-	if err != nil {
-		return fmt.Errorf("listen for MCP HTTP: %w", err)
-	}
-	if _, err := fmt.Fprintf(diagnostics, "MCP HTTP listening on %s\n", listener.Addr()); err != nil {
-		return errors.Join(err, listener.Close())
-	}
-	return runtime.ServeHTTP(listener)
-}

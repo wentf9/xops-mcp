@@ -24,11 +24,15 @@ type Identity struct {
 	ID, Name, User, CredentialID string
 }
 
+type Tag struct {
+	ID, Name string
+}
+
 type Node struct {
 	ID, Name, HostID, IdentityID    string
 	JumpIDs                         []string
 	SudoMode, PrivilegeCredentialID string
-	Aliases, Tags                   []string
+	Aliases, TagIDs                 []string
 	Disabled                        bool
 }
 
@@ -44,6 +48,7 @@ type Inventory struct {
 	Hosts       map[string]Host
 	Identities  map[string]Identity
 	Nodes       map[string]Node
+	Tags        map[string]Tag
 	Credentials map[string]Credential
 	Deleted     map[string]bool
 }
@@ -54,6 +59,7 @@ func (v Inventory) Clone() Inventory {
 	v.Identities = maps.Clone(v.Identities)
 	v.Credentials = maps.Clone(v.Credentials)
 	v.Nodes = maps.Clone(v.Nodes)
+	v.Tags = maps.Clone(v.Tags)
 	v.Deleted = maps.Clone(v.Deleted)
 	for id, credential := range v.Credentials {
 		credential.Ciphertext = bytes.Clone(credential.Ciphertext)
@@ -62,7 +68,7 @@ func (v Inventory) Clone() Inventory {
 	for id, node := range v.Nodes {
 		node.JumpIDs = slices.Clone(node.JumpIDs)
 		node.Aliases = slices.Clone(node.Aliases)
-		node.Tags = slices.Clone(node.Tags)
+		node.TagIDs = slices.Clone(node.TagIDs)
 		v.Nodes[id] = node
 	}
 	return v

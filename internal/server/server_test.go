@@ -328,6 +328,7 @@ func TestPersistentHTTPCommandTransferAndUnknownRecovery(t *testing.T) {
 		}
 	}
 	testutil.Close(t, journal)
+	cfg = restoredConfig(t, cfg)
 	r = start(t, ctx, cfg, nil)
 	current := r.host.Service.Coordinator.Snapshot()
 	oldDigest, err := original.Digest()

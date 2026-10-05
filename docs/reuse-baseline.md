@@ -82,6 +82,6 @@ The root-module checks above passed against this pin with workspaces disabled, i
 
 ## Limits / 验证范围
 
-The tests exercise real protocols against temporary local SSH/SFTP peers, not deployed hosts. Three-platform import graphs and cross-builds are not native Windows/macOS execution. M2 adds SQLite transactions, persistent adapters, encrypted-credential rotation and a standalone product binary. Web management, PostgreSQL and multi-instance deployment remain unimplemented. Broader shared-core regression and native-platform coverage belongs to upstream CI.
+The tests exercise real protocols against temporary local SSH/SFTP peers, not deployed hosts. Three-platform import graphs and cross-builds are not native Windows/macOS execution. M2 adds SQLite transactions, persistent adapters, encrypted-credential rotation and a standalone product binary. M3 adds administrator sessions, the embedded Web console, live management APIs and deployment examples. PostgreSQL and multi-instance deployment remain unimplemented. Broader shared-core regression and native-platform coverage belongs to upstream CI.
 
-独立消费者脚本仅验收公共 core 的固定版本消费；M2 数据库和服务能力另由根 module 的产品测试覆盖。当前运行说明见[服务指南](server.md)，M3 Web 与 M4 PostgreSQL 见[路线图](roadmap.md)；跨仓库职责见[架构](architecture.md)。
+独立消费者脚本仅验收公共 core 的固定版本消费；M2 数据库和服务能力另由根 module 的产品测试覆盖。当前运行说明见[服务指南](server.md)，M3 说明见 [Web 控制台指南](web-console.md)，M4 PostgreSQL 见[路线图](roadmap.md)；跨仓库职责见[架构](architecture.md)。

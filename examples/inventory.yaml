@@ -1,4 +1,6 @@
 version: 1
+# Optional independent tags. Node tag names are also created during import.
+tags: [example, unassigned]
 hosts:
   example:
     address: 192.0.2.10

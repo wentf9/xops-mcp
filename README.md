@@ -4,7 +4,7 @@
 
 面向自托管部署的 MCP 运维服务端，使用 SQLite 保存节点与加密凭据，复用 [xops-cli](https://github.com/wentf9/xops-cli) 的 SSH、SFTP 和 MCP 能力。
 
-**当前阶段：M2 独立 HTTP MCP 服务。** 已提供 SQLite 迁移、配置导入预览与版本冲突检查、加密凭据、主机公钥校验、文件传输和离线恢复。首版面向 Linux 单实例；Web 控制台与 PostgreSQL 按后续路线实施。
+**当前阶段：M3 Web 管理与部署。** 已提供单管理员控制台、在线节点与凭据管理、主机公钥确认、策略、审计，以及 SQLite、HTTP MCP 和文件传输。面向 Linux 单实例；PostgreSQL 属于下一阶段。
 
 ## 启动服务
 
@@ -14,11 +14,12 @@ mkdir -m 700 -p .local
 cp examples/server.yaml .local/server.yaml
 bin/xops-mcp keygen --out .local/master.key
 bin/xops-mcp keygen --out .local/mcp.token
+bin/xops-mcp keygen --out .local/admin.setup
 bin/xops-mcp migrate --config .local/server.yaml
 bin/xops-mcp serve --config .local/server.yaml
 ```
 
-默认地址为 `http://127.0.0.1:8080/mcp`，客户端使用 `mcp.token` 内容作为 Bearer Token。空库没有可执行节点；停止服务后按[部署与导入指南](docs/server.md)导入节点、凭据及已核验主机密钥。
+打开 `http://127.0.0.1:8081/`，用 `admin.setup` 中的凭据初始化管理员，再通过控制台管理节点。MCP 独立监听 `http://127.0.0.1:8080/mcp`，客户端使用独立的 `mcp.token`。已有部署保留原主密钥与数据，迁移后配置管理员即可。详见 [Web 控制台指南](docs/web-console.md)。
 
 ## 两个仓库的关系
 
@@ -42,6 +43,8 @@ xops-cli（CLI 产品与现阶段共享内核的源码仓库）
 - 初期按单实例设计：SQLite 为默认存储，PostgreSQL 为后续外部数据库选项。
 
 ## 设计与实施
+
+- [Web 控制台、API 与部署](docs/web-console.md)
 
 - [SQLite 服务部署与配置导入](docs/server.md)
 - [架构与依赖复用决策](docs/architecture.md)

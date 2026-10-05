@@ -1,0 +1,312 @@
+[
+  {
+    "label": "ascii",
+    "value": "node_01-prod",
+    "valid": true
+  },
+  {
+    "label": "digits",
+    "value": "0123456789",
+    "valid": true
+  },
+  {
+    "label": "separators",
+    "value": "_-",
+    "valid": true
+  },
+  {
+    "label": "chinese",
+    "value": "\u4e2d\u6587\u8282\u70b9_\u751f\u4ea7-01",
+    "valid": true
+  },
+  {
+    "label": "japanese",
+    "value": "\u65e5\u672c\u8a9e\u30fc\u30b5\u30fc\u30d0\u30fc",
+    "valid": true
+  },
+  {
+    "label": "korean",
+    "value": "\ud55c\uad6d\uc5b4",
+    "valid": true
+  },
+  {
+    "label": "accent",
+    "value": "\u00e9cole",
+    "valid": true
+  },
+  {
+    "label": "combining-accent",
+    "value": "e\u0301cole",
+    "valid": true
+  },
+  {
+    "label": "greek",
+    "value": "\u0395\u03bb\u03bb\u03ac\u03b4\u03b1",
+    "valid": true
+  },
+  {
+    "label": "cyrillic",
+    "value": "\u041c\u043e\u0441\u043a\u0432\u0430-01",
+    "valid": true
+  },
+  {
+    "label": "arabic",
+    "value": "\u0645\u064e\u0631\u0652\u062d\u064e\u0628\u064b\u0627-\u0661\u0662\u0663",
+    "valid": true
+  },
+  {
+    "label": "hebrew",
+    "value": "\u05e9\u05b8\u05c1\u05dc\u05d5\u05b9\u05dd",
+    "valid": true
+  },
+  {
+    "label": "hindi",
+    "value": "\u0939\u093f\u0928\u094d\u0926\u0940",
+    "valid": true
+  },
+  {
+    "label": "tamil",
+    "value": "\u0ba4\u0bae\u0bbf\u0bb4\u0bcd",
+    "valid": true
+  },
+  {
+    "label": "thai",
+    "value": "\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22\u0e51\u0e52\u0e53",
+    "valid": true
+  },
+  {
+    "label": "astral-letter",
+    "value": "\ud801\udc37_\ud840\udc00",
+    "valid": true
+  },
+  {
+    "label": "unicode-decimal",
+    "value": "\uff11\uff12\uff13-\ud835\udfd8",
+    "valid": true
+  },
+  {
+    "label": "ascii-limit",
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "valid": true
+  },
+  {
+    "label": "utf8-limit",
+    "value": "\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d",
+    "valid": true
+  },
+  {
+    "label": "empty",
+    "value": "",
+    "valid": false
+  },
+  {
+    "label": "leading-space",
+    "value": " name",
+    "valid": false
+  },
+  {
+    "label": "trailing-space",
+    "value": "name ",
+    "valid": false
+  },
+  {
+    "label": "internal-space",
+    "value": "node name",
+    "valid": false
+  },
+  {
+    "label": "tab",
+    "value": "node\tname",
+    "valid": false
+  },
+  {
+    "label": "newline",
+    "value": "node\nname",
+    "valid": false
+  },
+  {
+    "label": "carriage-return",
+    "value": "node\rname",
+    "valid": false
+  },
+  {
+    "label": "comma",
+    "value": "ops,prod",
+    "valid": false
+  },
+  {
+    "label": "dot",
+    "value": "node.name",
+    "valid": false
+  },
+  {
+    "label": "slash",
+    "value": "a/b",
+    "valid": false
+  },
+  {
+    "label": "backslash",
+    "value": "a\\b",
+    "valid": false
+  },
+  {
+    "label": "colon",
+    "value": "a:b",
+    "valid": false
+  },
+  {
+    "label": "at",
+    "value": "a@b",
+    "valid": false
+  },
+  {
+    "label": "plus",
+    "value": "a+b",
+    "valid": false
+  },
+  {
+    "label": "hash",
+    "value": "a#b",
+    "valid": false
+  },
+  {
+    "label": "quotes",
+    "value": "a'\"",
+    "valid": false
+  },
+  {
+    "label": "markup",
+    "value": "<img src=x>",
+    "valid": false
+  },
+  {
+    "label": "emoji",
+    "value": "node\ud83d\ude42",
+    "valid": false
+  },
+  {
+    "label": "nbsp",
+    "value": "a\u00a0b",
+    "valid": false
+  },
+  {
+    "label": "narrow-nbsp",
+    "value": "a\u202fb",
+    "valid": false
+  },
+  {
+    "label": "ideographic-space",
+    "value": "a\u3000b",
+    "valid": false
+  },
+  {
+    "label": "em-dash",
+    "value": "a\u2014b",
+    "valid": false
+  },
+  {
+    "label": "fullwidth-separator",
+    "value": "a\uff3fb",
+    "valid": false
+  },
+  {
+    "label": "superscript",
+    "value": "node\u00b2",
+    "valid": false
+  },
+  {
+    "label": "circled-number",
+    "value": "node\u2460",
+    "valid": false
+  },
+  {
+    "label": "fraction",
+    "value": "node\u00bd",
+    "valid": false
+  },
+  {
+    "label": "control",
+    "value": "a\u0000b",
+    "valid": false
+  },
+  {
+    "label": "escape",
+    "value": "a\u001bb",
+    "valid": false
+  },
+  {
+    "label": "zero-width",
+    "value": "a\u200bb",
+    "valid": false
+  },
+  {
+    "label": "joiner",
+    "value": "a\u200db",
+    "valid": false
+  },
+  {
+    "label": "bidi",
+    "value": "a\u202eb",
+    "valid": false
+  },
+  {
+    "label": "bom",
+    "value": "a\ufeffb",
+    "valid": false
+  },
+  {
+    "label": "standalone-mark",
+    "value": "\u0301a",
+    "valid": false
+  },
+  {
+    "label": "mark-after-digit",
+    "value": "1\u0301",
+    "valid": false
+  },
+  {
+    "label": "mark-after-hyphen",
+    "value": "a-\u0301",
+    "valid": false
+  },
+  {
+    "label": "enclosing-mark",
+    "value": "a\u20dd",
+    "valid": false
+  },
+  {
+    "label": "grapheme-joiner",
+    "value": "a\u034f",
+    "valid": false
+  },
+  {
+    "label": "variation-selector",
+    "value": "a\ufe0f",
+    "valid": false
+  },
+  {
+    "label": "ideographic-variation",
+    "value": "\ud840\udc00\udb40\udd00",
+    "valid": false
+  },
+  {
+    "label": "hangul-filler",
+    "value": "\u115f",
+    "valid": false
+  },
+  {
+    "label": "hangul-blank",
+    "value": "\u3164",
+    "valid": false
+  },
+  {
+    "label": "ascii-overflow",
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "valid": false
+  },
+  {
+    "label": "utf8-overflow",
+    "value": "\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d\u4e2d",
+    "valid": false
+  }
+]

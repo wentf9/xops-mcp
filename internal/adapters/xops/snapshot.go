@@ -17,6 +17,7 @@ import (
 	"github.com/wentf9/xops-cli/core/mcp/policy"
 	"github.com/wentf9/xops-cli/core/mcp/ports"
 	"github.com/wentf9/xops-cli/core/ssh"
+	"github.com/wentf9/xops-mcp/internal/naming"
 	"github.com/wentf9/xops-mcp/internal/storage"
 	cryptoSSH "golang.org/x/crypto/ssh"
 )
@@ -62,13 +63,29 @@ func Snapshot(v storage.Inventory) (ports.OperationSnapshot, []storage.Source, e
 	if v.DomainID == "" || len(v.Nodes) > 4096 {
 		return view, nil, errors.New("inventory requires a deployment identity and at most 4096 nodes")
 	}
+	tagNames := map[string]bool{}
+	for id, tag := range v.Tags {
+		if err := naming.Validate(tag.Name); err != nil {
+			return view, nil, fmt.Errorf("tag name: %w", err)
+		}
+		if id != tag.ID || !validText(id) || tagNames[tag.Name] {
+			return view, nil, errors.New("invalid or duplicate tag identity/name")
+		}
+		tagNames[tag.Name] = true
+	}
 	for id, c := range v.Credentials {
-		if id != c.ID || !validText(id) || !validText(c.Name) || c.Version == "" || len(c.Ciphertext) == 0 || (c.Kind != "password" && c.Kind != "key") {
+		if err := naming.Validate(c.Name); err != nil {
+			return view, nil, fmt.Errorf("credential name: %w", err)
+		}
+		if id != c.ID || !validText(id) || c.Version == "" || len(c.Ciphertext) == 0 || (c.Kind != "password" && c.Kind != "key") {
 			return view, nil, errors.New("invalid credential metadata")
 		}
 	}
 	for id, h := range v.Hosts {
-		if id != h.ID || !validText(id) || !validText(h.Name) || !validText(h.Address) || strings.ContainsAny(h.Address, " /\\\t[]") || h.Port < 1 || h.Port > 65535 {
+		if err := naming.Validate(h.Name); err != nil {
+			return view, nil, fmt.Errorf("host name: %w", err)
+		}
+		if id != h.ID || !validText(id) || !validText(h.Address) || strings.ContainsAny(h.Address, " /\\\t[]") || h.Port < 1 || h.Port > 65535 {
 			return view, nil, errors.New("invalid host endpoint")
 		}
 		if h.HostKey != "" {
@@ -78,7 +95,10 @@ func Snapshot(v storage.Inventory) (ports.OperationSnapshot, []storage.Source, e
 		}
 	}
 	for id, i := range v.Identities {
-		if id != i.ID || !validText(id) || !validText(i.Name) || !validText(i.User) {
+		if err := naming.Validate(i.Name); err != nil {
+			return view, nil, fmt.Errorf("identity name: %w", err)
+		}
+		if id != i.ID || !validText(id) || !validText(i.User) {
 			return view, nil, errors.New("invalid SSH identity")
 		}
 		if _, exists := v.Credentials[i.CredentialID]; i.CredentialID != "" && !exists {
@@ -88,7 +108,10 @@ func Snapshot(v storage.Inventory) (ports.OperationSnapshot, []storage.Source, e
 	var sources []storage.Source
 	hops := snapshotConfigs{}
 	for id, n := range v.Nodes {
-		if id != n.ID || !validText(id) || !validText(n.Name) || v.Deleted[id] {
+		if err := naming.Validate(n.Name); err != nil {
+			return view, nil, fmt.Errorf("node name: %w", err)
+		}
+		if id != n.ID || !validText(id) || v.Deleted[id] {
 			return view, nil, errors.New("invalid or deleted node identity")
 		}
 		h, hOK := v.Hosts[n.HostID]
@@ -151,8 +174,8 @@ func Snapshot(v storage.Inventory) (ports.OperationSnapshot, []storage.Source, e
 		slices.Sort(aliases)
 		aliases = slices.Compact(aliases)
 		for _, alias := range aliases {
-			if !validText(alias) {
-				return view, nil, errors.New("invalid node alias")
+			if err := naming.Validate(alias); err != nil {
+				return view, nil, fmt.Errorf("node alias: %w", err)
 			}
 			if other, exists := view.Selectors[alias]; exists && other != id {
 				return view, nil, fmt.Errorf("ambiguous node selector %q", alias)
@@ -162,12 +185,14 @@ func Snapshot(v storage.Inventory) (ports.OperationSnapshot, []storage.Source, e
 			}
 			view.Selectors[alias] = id
 		}
-		for _, tag := range n.Tags {
-			if !validText(tag) {
-				return view, nil, errors.New("invalid node tag")
+		var tags []string
+		for _, tagID := range n.TagIDs {
+			tag, exists := v.Tags[tagID]
+			if !exists {
+				return view, nil, errors.New("node references missing tag")
 			}
+			tags = append(tags, tag.Name)
 		}
-		tags := slices.Clone(n.Tags)
 		slices.Sort(tags)
 		tags = slices.Compact(tags)
 		if len(tags) == 0 {

@@ -4,7 +4,7 @@
 
 A self-hosted MCP operations server with SQLite inventory and encrypted credentials, sharing SSH/SFTP/MCP capabilities with [xops-cli](https://github.com/wentf9/xops-cli).
 
-**Status: M2 standalone HTTP MCP server.** SQLite migrations, inventory import previews and revision checks, encrypted credentials, pinned host trust, file transfers and offline recovery are available. The initial target is a single Linux instance; Web management and PostgreSQL remain later milestones.
+**Status: M3 Web management and deployment.** The embedded single-administrator console provides live inventory/credential management, host trust, policy and audit alongside SQLite, HTTP MCP and file transfers. The target is a single Linux instance; PostgreSQL is the next milestone.
 
 ## Start the server
 
@@ -14,11 +14,12 @@ mkdir -m 700 -p .local
 cp examples/server.yaml .local/server.yaml
 bin/xops-mcp keygen --out .local/master.key
 bin/xops-mcp keygen --out .local/mcp.token
+bin/xops-mcp keygen --out .local/admin.setup
 bin/xops-mcp migrate --config .local/server.yaml
 bin/xops-mcp serve --config .local/server.yaml
 ```
 
-The default endpoint is `http://127.0.0.1:8080/mcp`. Clients use the contents of `mcp.token` as their Bearer token. An empty database has no executable nodes; stop the server and follow the [deployment and import guide](docs/en/server.md) to add inventory, credentials and verified host keys.
+Open `http://127.0.0.1:8081/`, initialize the administrator using `admin.setup`, then manage inventory in the console. MCP clients use the separate `http://127.0.0.1:8080/mcp` listener with the separate `mcp.token`. Existing deployments retain their master key and data, migrate, and configure an administrator. See the [Web console guide](docs/en/web-console.md).
 
 ## Repository relationship
 
@@ -42,6 +43,8 @@ xops-cli: CLI product and current shared-core source owner
 - Initial deployment is single-instance, with SQLite by default and PostgreSQL planned as an external database option.
 
 ## Design and delivery
+
+- [Web console, API and deployment](docs/en/web-console.md)
 
 - [SQLite deployment and inventory import](docs/en/server.md)
 - [Architecture and dependency decisions](docs/en/architecture.md)

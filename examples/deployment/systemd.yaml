@@ -1,0 +1,12 @@
+data_dir: /var/lib/xops-mcp
+master_key_file: /etc/xops-mcp/master.key
+mcp_token_file: /etc/xops-mcp/mcp.token
+admin_bootstrap_token_file: /etc/xops-mcp/admin.setup
+web_enabled: true
+web_listen: 127.0.0.1:8081
+web_public_url: https://admin.example.com
+web_base_path: /console
+listen: 127.0.0.1:8080
+public_url: https://mcp.example.com
+tool_timeout: 5m
+shutdown_timeout: 45s

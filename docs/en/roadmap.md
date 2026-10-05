@@ -1,8 +1,8 @@
 # Roadmap and acceptance criteria
 
-The shared core uses a fixed remote version, and M2 implements SQLite and the standalone HTTP MCP server. See the [server guide](server.md), [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md). Web management and PostgreSQL remain later milestones.
+The shared core uses a fixed remote version, and M2 implements SQLite and the standalone HTTP MCP server. See the [server guide](server.md), [dependency baseline](../reuse-baseline.md) and [interface contracts](interface-decoupling.md). M3 Web management/deployment is implemented; PostgreSQL remains planned.
 
-M0 bootstrap, M1 consumer integration and M2 standalone service are implemented. The upstream pin includes the published host-key algorithm negotiation repair; its source and acceptance are recorded in the dependency baseline. M3–M4 describe planned product work and dependency order, not delivery dates.
+M0 bootstrap, M1 consumer integration and M2 standalone service are implemented. The upstream pin includes the published host-key algorithm negotiation repair; its source and acceptance are recorded in the dependency baseline. M4 describes planned product work and dependency order, not delivery dates.
 
 ## M0: repository and verifiable reuse baseline
 
@@ -40,15 +40,19 @@ Acceptance: empty/existing database migrations, restart recovery, version confli
 
 Tests cover schema upgrades/future-version rejection, rollback/revision conflicts, uncertain commits, publication failure, credential rotation, preservation of admitted targets, deleted-ID reuse prevention, and real local HTTP/SSH/SFTP with encrypted keys, ProxyJump, disablement, trust rejection, transfer idempotency and unknown restart/original-binding verification. Service and consumer tests use race checks and goleak with synthetic deployment-owned credentials.
 
-M2 management uses offline imports. Live updates are verified through the service contract but have no Web/API endpoint yet. The server guide specifies CLI import fields and unresolved credential handling. Native Linux tests are distinct from platform graphs/cross-builds; M2 does not claim native Windows/macOS service acceptance, deployed-host validation or Web delivery.
+M2 delivered offline imports and live-update service contracts; M3 now supplies their Web/API entry points. The server guide specifies CLI import fields and unresolved credential handling. Native Linux tests are distinct from platform graphs/cross-builds; M2 does not claim native Windows/macOS service acceptance, deployed-host validation or Web delivery.
 
-## M3: Web management and deployment
+## M3: Web management and deployment (implemented)
 
 Owner: `xops-mcp`.
 
 Add administrator bootstrap/login/session invalidation and CSRF protection; inventory, identity, tag, credential, policy, connection-test, and host-trust management; revision/ETag edits; metadata-only credential reads; audit queries; task and revocation semantics; embedded Web assets; container/volume, backup/restore, and proxy examples.
 
 Acceptance: browser CRUD, concurrent edit conflicts, MCP visibility after Web edits, secret redaction, administrator/MCP authentication separation, persistence after restart, and no accidental retargeting of in-flight work.
+
+The implementation includes SQLite v4 administrator/session and v5 independent-tag/primary-key migrations, Web/offline bootstrap, 12-hour sessions and global invalidation, same-origin/CSRF protection, If-Match management APIs, session/revision-bound host-key confirmation, authentication-only SSH tests, cursor audit queries and active-permit views. Management and MCP use separate listeners, with a fixed configurable prefix for the management page, assets, APIs and cookies. Web assets are embedded directly; deployment examples cover Docker/Compose, systemd, Nginx and offline backup/restore.
+
+Isolated SSH fixtures drive browser setup/login, CRUD, trust confirmation, real connections, edit conflicts, XSS escaping, tags/policy/audit, mobile layout and logout. Go integration tests cover live Web updates in existing MCP sessions, credential rotation, authentication isolation, migrations/restarts, and unknown-task/original-binding recovery from a backup copy. Production hosts and native Windows/macOS execution are not part of this evidence. Active operations track permits, not a replacement transfer journal. See the [Web console guide](web-console.md).
 
 ## M4: PostgreSQL
 

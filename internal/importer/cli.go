@@ -1,6 +1,8 @@
 package importer
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -70,7 +72,7 @@ func decodeCLI(data []byte) (Document, []string, error) {
 			return d, nil, errors.New("schema v2 must not contain plaintext credentials")
 		}
 		if i.Password != "" && (i.AuthType == "password" || i.AuthType == "auto" || i.AuthType == "") {
-			identity.Credential = "login:" + name
+			identity.Credential = cliCredentialName("login", name)
 			d.Credentials[identity.Credential] = Credential{Kind: "password", Password: i.Password}
 		} else {
 			warnings = append(warnings, fmt.Sprintf("identity %q requires a server-owned credential", name))
@@ -91,7 +93,7 @@ func decodeCLI(data []byte) (Document, []string, error) {
 			return d, nil, errors.New("schema v2 must not contain plaintext privilege credentials")
 		}
 		if n.SuPwd != "" {
-			node.PrivilegeCredential = "privilege:" + name
+			node.PrivilegeCredential = cliCredentialName("privilege", name)
 			d.Credentials[node.PrivilegeCredential] = Credential{Kind: "password", Password: n.SuPwd}
 		}
 		d.Nodes[name] = node
@@ -122,6 +124,13 @@ func decodeCLI(data []byte) (Document, []string, error) {
 	}
 	slices.Sort(warnings)
 	return d, warnings, nil
+}
+
+// Purpose keeps login and privilege material separate; the digest gives even
+// maximum-length Unicode source names a bounded, valid, deterministic name.
+func cliCredentialName(purpose, name string) string {
+	sum := sha256.Sum256([]byte(name))
+	return purpose + "-" + hex.EncodeToString(sum[:])
 }
 
 func jumpSelectors(raw string) []string {

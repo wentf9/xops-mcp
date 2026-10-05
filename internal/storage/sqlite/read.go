@@ -39,6 +39,7 @@ func (s *Store) Load(ctx context.Context) (_ storage.Inventory, retErr error) {
 	}
 	defer rollback(tx, &retErr)
 	v := storage.Inventory{Hosts: map[string]storage.Host{}, Identities: map[string]storage.Identity{}, Nodes: map[string]storage.Node{}, Credentials: map[string]storage.Credential{}, Deleted: map[string]bool{}}
+	v.Tags = map[string]storage.Tag{}
 	var policy []byte
 	if err := tx.QueryRowContext(ctx, "SELECT domain_id, revision FROM deployment WHERE singleton = 1").Scan(&v.DomainID, &v.Revision); err != nil {
 		return v, err
@@ -97,13 +98,19 @@ func (s *Store) Load(ctx context.Context) (_ storage.Inventory, retErr error) {
 			v.Nodes[id] = x
 			return nil
 		}},
-		{"SELECT node_id,tag FROM node_tags ORDER BY tag", func(r *sql.Rows) error {
+		{"SELECT id,name FROM tags", func(r *sql.Rows) error {
+			var x storage.Tag
+			err := r.Scan(&x.ID, &x.Name)
+			v.Tags[x.ID] = x
+			return err
+		}},
+		{"SELECT node_id,tag_id FROM node_tags ORDER BY tag_id", func(r *sql.Rows) error {
 			var id, tag string
 			if err := r.Scan(&id, &tag); err != nil {
 				return err
 			}
 			x := v.Nodes[id]
-			x.Tags = append(x.Tags, tag)
+			x.TagIDs = append(x.TagIDs, tag)
 			v.Nodes[id] = x
 			return nil
 		}},

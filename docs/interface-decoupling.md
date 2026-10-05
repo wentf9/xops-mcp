@@ -1,6 +1,6 @@
 # 公共接口解耦与服务端接入
 
-状态：上游 D1–D5 公共实现和 D6 独立抽取已完成，本仓库已固定到可从远端下载的 core 提交并通过无 replace 验收。core 消费测试已从 testdata 迁入 internal/coreconsumer，常规 CI 运行 core 契约及全量依赖边界检查。精确版本及 PR 状态入口见[依赖基线](reuse-baseline.md)；M2 数据库适配器和产品入口已实现，Web 仍属后续阶段。
+状态：上游 D1–D5 公共实现和 D6 独立抽取已完成，本仓库已固定到可从远端下载的 core 提交并通过无 replace 验收。core 消费测试已从 testdata 迁入 internal/coreconsumer，常规 CI 运行 core 契约及全量依赖边界检查。精确版本及 PR 状态入口见[依赖基线](reuse-baseline.md)；M2 数据库适配器和产品入口已实现，M3 Web 管理已通过相同接口接入。
 
 公共源码的主设计位于 [xops-cli](https://github.com/wentf9/xops-cli) 的 `docs/development/shared-core-decoupling.md`；本文件约定新服务如何消费该设计。规划同时覆盖 CLI 公共代码的可抽取性和服务端接口接入，不把数据库支持作为解耦完成的唯一判断。
 
@@ -119,4 +119,4 @@ Web 校验和版本前置条件
 
 升级依赖前运行 `python3 scripts/check_core_consumer.py --version EXACT_VERSION`，以可下载 pin 做无 replace 验收，随后更新根 go.mod/go.sum 并运行完整 gates。当前固定版本已通过此验收；版本、提交与校验范围见依赖基线。
 
-TransferSession 新增 ReserveCommit(ctx, permit)，使流式传输和提交保留原 transport、分别使用准入许可。v2 journal 保存无秘密的原始授权和无损编码的凭据版本；claim、重新发放凭证和恢复均校验原绑定。旧 v1 保留状态与 unknown 锁，但不能获得远程权限。数据库适配器必须跨重启持久化域与依赖版本；M2 业务 SQL 存储与持久适配器已实现，传输仍使用 core journal；Web 属于后续产品阶段。
+TransferSession 新增 ReserveCommit(ctx, permit)，使流式传输和提交保留原 transport、分别使用准入许可。v2 journal 保存无秘密的原始授权和无损编码的凭据版本；claim、重新发放凭证和恢复均校验原绑定。旧 v1 保留状态与 unknown 锁，但不能获得远程权限。数据库适配器必须跨重启持久化域与依赖版本；M2 业务 SQL 存储与持久适配器已实现，传输仍使用 core journal；M3 Web 管理复用同一 service 与协调器。
