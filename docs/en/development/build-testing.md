@@ -19,7 +19,6 @@ For an isolated local deployment:
 mkdir -m 0700 -p .local
 cp examples/server.yaml .local/server.yaml
 bin/xops-mcp keygen --out .local/master.key
-bin/xops-mcp keygen --out .local/mcp.token
 bin/xops-mcp keygen --out .local/admin.jwt.key
 bin/xops-mcp keygen --type rsa --out .local/admin.encryption.key
 bin/xops-mcp keygen --out .local/admin.setup
@@ -87,3 +86,5 @@ After an asmcrypto.js update, run `npm run vendor:crypto` and commit the lockfil
 - Replay key generation, initialization, import, backup and recovery in isolated temporary directories. Validate RSA with `openssl pkey -check -noout` without printing private material.
 - Use isolated image tags, project names, ports and volumes for container checks and verify UID 65532 access. Do not replace or stop deployed user containers.
 - Documentation work does not automatically authorize commits or pushes. Identify and preserve existing user edits.
+
+For joint core/server development, use a workspace outside both repositories and explicitly set `GOWORK=/path/to/go.work`. Set `XOPS_TEST_GOWORK=/path/to/go.work` to use it for the browser fixture build. After publishing core and updating the module pin, repeat standalone validation with `GOWORK=off`.

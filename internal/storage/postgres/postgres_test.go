@@ -103,7 +103,7 @@ func TestMigrationRollbackUpgradeAndFutureVersion(t *testing.T) {
 	s, vault, dir, dsn := fixture(t)
 	// Simulate the previous PostgreSQL schema. A conflicting table makes the
 	// second migration fail after its first DDL; the whole upgrade must roll back.
-	if _, err := s.db.ExecContext(t.Context(), `DROP TABLE IF EXISTS admin_sessions; DROP TABLE admin; DROP TABLE audit_events;
+	if _, err := s.db.ExecContext(t.Context(), `DROP TABLE mcp_tokens; DROP TABLE IF EXISTS admin_sessions; DROP TABLE admin; DROP TABLE audit_events;
 UPDATE schema_version SET version=1; CREATE TABLE admin(blocker TEXT)`); err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestStatelessMigrationRemovesLegacySessions(t *testing.T) {
 	if err := s.InitializeAdmin(t.Context(), storage.Admin{Username: "admin", PasswordHash: []byte("fixture-hash"), Version: "v1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.ExecContext(t.Context(), `CREATE TABLE admin_sessions(digest BYTEA PRIMARY KEY,admin_version TEXT,expires_at BIGINT);
+	if _, err := s.db.ExecContext(t.Context(), `DROP TABLE mcp_tokens; CREATE TABLE admin_sessions(digest BYTEA PRIMARY KEY,admin_version TEXT,expires_at BIGINT);
 INSERT INTO admin_sessions VALUES(decode(repeat('00',32),'hex'),'v1',9999999999); UPDATE schema_version SET version=2`); err != nil {
 		t.Fatal(err)
 	}

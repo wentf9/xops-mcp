@@ -18,7 +18,6 @@ umask 077
 
 ```sh
 xops-mcp keygen --out master.key
-xops-mcp keygen --out mcp.token
 xops-mcp keygen --out admin.jwt.key
 xops-mcp keygen --type rsa --out admin.encryption.key
 xops-mcp keygen --out admin.setup
@@ -32,7 +31,6 @@ Save the following as `server.yaml`:
 database_driver: sqlite
 data_dir: data
 master_key_file: master.key
-mcp_token_file: mcp.token
 admin_jwt_key_file: admin.jwt.key
 admin_encryption_key_file: admin.encryption.key
 admin_bootstrap_token_file: admin.setup
@@ -58,7 +56,7 @@ xops-mcp serve --config server.yaml
 
 Leave the terminal running. Open `http://127.0.0.1:8081/` and use the code in `admin.setup` to create the administrator. You may remove that setup file afterward; retain the other keys.
 
-A new service has no nodes. Use the [console guide](console.md) to add and enable nodes before connecting an MCP client. The MCP address is `http://127.0.0.1:8080/mcp`.
+A new service has no nodes. Use the [console guide](console.md) to add and enable nodes and create a credential on the [MCP Token](tokens.md) page before connecting an MCP client. The MCP address is `http://127.0.0.1:8080/mcp`.
 
 Press `Ctrl+C` to stop. Inspect the stopped deployment with:
 

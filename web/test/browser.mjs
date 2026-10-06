@@ -24,7 +24,7 @@ try {
     ],
     {
       cwd: root,
-      env: { ...process.env, GOWORK: "off" },
+      env: { ...process.env, GOWORK: process.env.XOPS_TEST_GOWORK || "off" },
       stdio: "pipe",
       timeout: 120000,
     },
@@ -143,6 +143,42 @@ try {
     await form().getByRole("button", { name: "保存", exact: true }).click();
     await page.locator("dialog[open]").waitFor({ state: "hidden" });
   };
+  await nav("MCP Token");
+  await page.getByRole("button", { name: "新建Token", exact: false }).click();
+  await form().getByLabel("名称", { exact: true }).fill("browser-client");
+  await form().getByLabel("到期时间（留空表示永不过期）").fill("2099-10-05T12:34:56");
+  await form().getByRole("button", { name: "创建 Token", exact: true }).click();
+  await form().getByRole("heading", { name: "Token 已创建" }).waitFor();
+  const mcpSecret = await form().getByLabel("Token", { exact: true }).inputValue();
+  assert.match(mcpSecret, /^xmcp_[A-Z2-7]+$/);
+  await form().getByRole("button", { name: "我已保存" }).click();
+  await page.locator("#created-token").waitFor({ state: "detached" });
+  await page.getByRole("row").filter({ hasText: "browser-client" }).waitFor();
+  assert.equal(await page.locator("#created-token").count(), 0);
+  const metadata = await request("get", info.url + "api/v1/mcp-tokens", { headers: { Authorization: "Bearer " + await token() } });
+  const metadataText = await metadata.text();
+  assert(!metadataText.includes(mcpSecret));
+  assert(!metadataText.includes("Digest"));
+  await metadata.dispose();
+  const tokenRow = () => page.getByRole("row").filter({ hasText: "browser-client" });
+  await page.screenshot({ path: resolve(artifacts, `mcp-tokens-${useTLS ? "https" : "http"}.png`), fullPage: true });
+  await tokenRow().getByRole("button", { name: "编辑", exact: true }).click();
+  assert.equal(await form().getByLabel("到期时间（留空表示永不过期）").inputValue(), "2099-10-05T12:34:56");
+  await form().getByLabel("启用 Token", { exact: true }).uncheck();
+  await save();
+  await tokenRow().getByText("已停用", { exact: true }).waitFor();
+  const rejected = await request("get", info.mcpURL + "/mcp", { headers: { Authorization: "Bearer " + mcpSecret } });
+  assert.equal(rejected.status(), 401);
+  await rejected.dispose();
+  await tokenRow().getByRole("button", { name: "编辑", exact: true }).click();
+  await form().getByLabel("启用 Token", { exact: true }).check();
+  await save();
+  await tokenRow().getByText("已启用", { exact: true }).waitFor();
+  await tokenRow().getByRole("button", { name: "吊销", exact: true }).click();
+  await form().getByRole("button", { name: "确认", exact: true }).click();
+  await tokenRow().getByText("已吊销", { exact: true }).waitFor();
+  await page.reload();
+  await tokenRow().getByText("已吊销", { exact: true }).waitFor();
   await nav("主机与信任");
   await page.getByRole("button", { name: "新建主机", exact: false }).click();
   await form().getByLabel("名称", { exact: true }).fill("browser-host");
@@ -489,7 +525,7 @@ try {
   assert(encryptedRequests.some(url => url.endsWith("/setup")));
   assert(encryptedRequests.some(url => url.endsWith("/password")));
   console.log(
-    `Browser acceptance passed (${useTLS ? "HTTPS / Web Crypto" : "HTTP / embedded crypto"}): prefixed console/assets/API/JWT, isolated ports, external links, Unicode password setup/login/change, direct and independent host-key confirmation, credential/identity/node/tag CRUD, real SSH test, revision conflict, XSS escaping, policy, audit, responsive layout and logout`,
+    `Browser acceptance passed (${useTLS ? "HTTPS / Web Crypto" : "HTTP / embedded crypto"}): prefixed console/assets/API/JWT, isolated ports, external links, Unicode password setup/login/change, direct and independent host-key confirmation, credential/identity/node/tag CRUD, one-time MCP tokens, expiry, enable/revoke, real SSH test, revision conflict, XSS escaping, policy, audit, responsive layout and logout`,
   );
 } catch (error) {
   if (page) {

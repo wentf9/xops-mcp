@@ -12,7 +12,7 @@ Use `--config` to select a configuration file. Restart after editing it. Paths i
 | `database_driver` | `sqlite` (default) or `postgres` |
 | `postgres_dsn_file` | Required for PostgreSQL; private database connection file |
 | `master_key_file` | Required data master key; saved remote credentials cannot be recovered without it |
-| `mcp_token_file` | Required to serve; MCP client access credential |
+| `mcp_token_file` | Optional private file for an initial MCP token; normally create tokens in the console |
 | `admin_jwt_key_file` | Required for management; login-signing key |
 | `admin_encryption_key_file` | Required for management; generate with `keygen --type rsa` |
 | `admin_bootstrap_token_file` | Optional setup code for first-time administrator creation |

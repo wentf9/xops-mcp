@@ -9,6 +9,7 @@
 - [接口解耦](interface-decoupling.md)：状态、准入、凭据和传输接入契约。
 - [管理 API](api.md)：路由、错误及并发编辑。
 - [认证契约](admin-auth.md)：JWT、JWE、TLS 配置和前端认证状态。
+- [MCP 客户端认证](mcp-auth.md)：多 Token、客户端身份、生命周期与会话/任务隔离。
 - [数据库与运行约束](storage.md)：迁移、事务、归档和资源所有权。
 - [依赖基线](reuse-baseline.md)：当前 pin 与验证范围。
 - [路线图](roadmap.md)：里程碑、已实现能力及后续边界。

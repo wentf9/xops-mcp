@@ -1080,3 +1080,9 @@ dialog::backdrop {
     gap: 6px;
   }
 }
+
+.token-prefix {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+}

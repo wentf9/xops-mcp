@@ -96,6 +96,7 @@ type Repository interface {
 type Database interface {
 	Repository
 	AdminRepository
+	MCPTokenRepository
 	Export(context.Context) (Backup, error)
 	Restore(context.Context, Backup) error
 	Close() error

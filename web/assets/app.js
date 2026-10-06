@@ -19,10 +19,14 @@ function setAccessToken(token) {
   // including transitions where both the old and new token are empty.
   authGeneration++;
   accessToken = token;
+  S.tokens = null;
+  tokenRequest++;
   try { if (token) sessionStorage.setItem(tokenStorageKey, token); else sessionStorage.removeItem(tokenStorageKey); } catch { /* memory-only login still works */ }
 }
 const S = {
   session: null,
+  tokens: null,
+  tokenError: "",
   v: null,
   etag: "",
   page: "nodes",
@@ -46,6 +50,7 @@ const pages = {
   policy: ["操作策略", "管理风险确认、命令拦截与受保护路径。", "◎"],
   operations: ["运行中", "查看当前准入操作及其执行阶段。", "↗"],
   audit: ["审计记录", "查看授权、配置变更与执行结果。", "≡"],
+  tokens: ["MCP Token", "为客户端分别创建访问凭据，独立设置有效期和启停状态。", "⚿"],
   account: ["账户", "管理管理员密码和当前会话。", "⚙"],
 };
 const dialog = $("#dialog"),
@@ -96,7 +101,8 @@ function checkAdminPasswords(form) {
   return form.reportValidity();
 }
 let inventoryRequest = 0,
-  auditRequest = 0;
+  auditRequest = 0,
+  tokenRequest = 0;
 const formVersions = new WeakMap();
 function formSnapshot(form = $("#page form")) {
   return { form, version: formVersions.get(form) };
@@ -297,17 +303,19 @@ function render() {
     )
       .map(
         ([p, [label, , icon]]) =>
-          `${p === "operations" ? '<div class="nav-label">可观测性</div>' : p === "account" ? '<div class="nav-label">设置</div>' : ""}<a href="#${p}" class="nav-item ${S.page === p ? "active" : ""}"><span>${icon}</span>${label}</a>`,
+          `${p === "operations" ? '<div class="nav-label">可观测性</div>' : p === "tokens" ? '<div class="nav-label">设置</div>' : ""}<a href="#${p}" class="nav-item ${S.page === p ? "active" : ""}"><span>${icon}</span>${label}</a>`,
       )
       .join(
         "",
-      )}</nav><div class="sidebar-bottom"><div class="avatar">A</div><div>${esc(S.session.username)}<small>管理员</small></div><button data-action="logout" aria-label="退出登录" title="退出登录">↪</button></div></aside><main class="main"><header class="topbar"><div>控制台 <span class="slash">/</span> ${title}</div><div class="topbar-right"><span class="online"><i class="dot"></i>服务在线</span><button class="quiet" data-action="refresh">↻ 刷新</button><button class="mobile-logout quiet" data-action="logout" aria-label="退出登录">↪</button></div></header><div class="content"><div class="page-heading"><div><div class="eyebrow">${S.page === "nodes" ? "INFRASTRUCTURE" : "WORKSPACE"}</div><h1>${title}</h1><p>${description}</p></div>${["nodes", "hosts", "identities", "credentials", "tags"].includes(S.page) ? `<button class="primary" data-action="create" data-kind="${S.page}">＋ 新建${{ nodes: "节点", hosts: "主机", identities: "身份", credentials: "凭据", tags: "标签" }[S.page]}</button>` : ""}</div><div id="publication-status"></div><section id="page">${content()}</section><footer><span>XOps MCP · 本地掌控，安全连接</span><span id="config-revision"></span></footer></div></main></div>`;
+      )}</nav><div class="sidebar-bottom"><div class="avatar">A</div><div>${esc(S.session.username)}<small>管理员</small></div><button data-action="logout" aria-label="退出登录" title="退出登录">↪</button></div></aside><main class="main"><header class="topbar"><div>控制台 <span class="slash">/</span> ${title}</div><div class="topbar-right"><span class="online"><i class="dot"></i>服务在线</span><button class="quiet" data-action="refresh">↻ 刷新</button><button class="mobile-logout quiet" data-action="logout" aria-label="退出登录">↪</button></div></header><div class="content"><div class="page-heading"><div><div class="eyebrow">${S.page === "nodes" ? "INFRASTRUCTURE" : "WORKSPACE"}</div><h1>${title}</h1><p>${description}</p></div>${["nodes", "hosts", "identities", "credentials", "tags", "tokens"].includes(S.page) ? `<button class="primary" data-action="create" data-kind="${S.page}">＋ 新建${{ nodes: "节点", hosts: "主机", identities: "身份", credentials: "凭据", tags: "标签", tokens: "Token" }[S.page]}</button>` : ""}</div><div id="publication-status"></div><section id="page">${content()}</section><footer><span>XOps MCP · 本地掌控，安全连接</span><span id="config-revision"></span></footer></div></main></div>`;
   bind();
   updateStatus();
   if (S.page === "audit") loadAudit();
+  if (S.page === "tokens") loadTokens();
 }
 function content() {
   const v = S.v;
+  if (S.page === "tokens") return tokenTable();
   if (S.page === "nodes") {
     const nodes = v.nodes.filter(
       (n) =>
@@ -483,6 +491,74 @@ function renderAudit() {
     !S.next ||
     S.auditFilter !== JSON.stringify([S.outcome, S.auditNode]);
   $("#audit-retry")?.addEventListener("click", () => loadAudit());
+}
+function tokenTable() {
+  if (S.tokens === null) return S.tokenError
+    ? empty("Token 加载失败", esc(S.tokenError)) + '<button id="token-retry">重试加载</button>'
+    : empty("正在加载 Token", "");
+  if (!S.tokens.length) return empty("尚未创建 Token", "为每个 MCP 客户端创建独立的访问凭据。");
+  return `<div class="panel">${table(["名称 / 凭据前缀", "状态", "到期时间", "创建时间", "操作"], S.tokens.map((t) => {
+    const revoked = t.revokedAt > 0, expired = t.expiresAt && t.expiresAt * 1000 <= Date.now();
+    const status = revoked ? "已吊销" : expired ? "已过期" : t.enabled ? "已启用" : "已停用";
+    return `<tr><td><strong>${esc(t.name)}</strong><small class="token-prefix">${esc(t.prefix)}…</small></td><td>${chip(status, revoked || expired || !t.enabled ? "neutral" : "good")}</td><td>${t.expiresAt ? date(t.expiresAt * 1000) : "永不过期"}</td><td>${date(t.createdAt * 1000)}</td><td>${revoked ? "—" : `<div class="row-actions"><button data-action="edit" data-kind="tokens" data-id="${esc(t.id)}">编辑</button><button class="danger" data-action="token-revoke" data-id="${esc(t.id)}">吊销</button></div>`}</td></tr>`;
+  }))}</div>`;
+}
+async function loadTokens() {
+  const request = ++tokenRequest, generation = authGeneration;
+  try {
+    const { data } = await api("/mcp-tokens");
+    if (request !== tokenRequest || generation !== authGeneration) return;
+    S.tokens = data.tokens;
+    S.tokenError = "";
+  } catch (error) {
+    if (request !== tokenRequest || generation !== authGeneration) return;
+    S.tokens = null;
+    S.tokenError = error.message;
+  }
+  if (S.page === "tokens" && $("#page") && S.session) {
+    $("#page").innerHTML = tokenTable();
+    bind();
+  }
+}
+function localDateTime(seconds) {
+  if (!seconds) return "";
+  const value = new Date(seconds * 1000);
+  return new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+}
+function showCreatedToken(secret) {
+  if (dialog.open) dialog.close();
+  const form = modal("Token 已创建", `<p>完整 Token 仅显示这一次，请复制到客户端配置中并妥善保存。</p><label>Token<textarea id="created-token" aria-label="Token" readonly spellcheck="false" rows="3">${esc(secret)}</textarea></label><button type="button" id="copy-token">复制 Token</button>`, async () => {}, "我已保存");
+  $("#copy-token", form).onclick = async () => {
+    const field = $("#created-token", form);
+    field.focus(); field.select();
+    if (!navigator.clipboard) { toast("已选中 Token，请使用复制快捷键"); return; }
+    try { await navigator.clipboard.writeText(field.value); toast("Token 已复制"); }
+    catch { toast("请使用复制快捷键复制选中的 Token"); }
+  };
+}
+function editToken(id) {
+  const item = id ? S.tokens.find((t) => t.id === id) : { name: "", enabled: true, expiresAt: 0 };
+  const generation = authGeneration;
+  const form = modal(id ? "编辑 Token" : "新建 Token", nameField("名称", item.name) +
+    field("到期时间（留空表示永不过期）", "expiresAt", localDateTime(item.expiresAt), 'type="datetime-local" step="1" max="9999-12-31T23:59:59"') +
+    `<label class="check"><input type="checkbox" name="enabled" ${item.enabled ? "checked" : ""}>启用 Token</label>`, async (data, submitted) => {
+      const expires = data.get("expiresAt");
+      const body = { name: data.get("name"), enabled: data.has("enabled"), expiresAt: expires ? Math.floor(new Date(expires).getTime() / 1000) : 0 };
+      submitted.dataset.busy = "true";
+      submitted.querySelectorAll("[data-close]").forEach((b) => b.disabled = true);
+      try {
+        const { data: result } = await api("/mcp-tokens" + (id ? "/" + id : ""), { method: id ? "PUT" : "POST", body, etag: id ? `"${item.version}"` : "" });
+        if (generation !== authGeneration) return;
+        if (!id) showCreatedToken(result.token);
+        else toast("Token 已更新");
+        await loadTokens();
+      } finally {
+        delete submitted.dataset.busy;
+        submitted.querySelectorAll("[data-close]").forEach((b) => b.disabled = false);
+      }
+    }, id ? "保存" : "创建 Token");
+  // Do not discard a one-time secret while creation is in flight.
+  form.addEventListener("keydown", (event) => { if (event.key === "Escape" && form.dataset.busy) event.preventDefault(); });
 }
 function field(label, key, value = "", attrs = "") {
   return `<label>${label}<input name="${key}" value="${esc(value)}" ${attrs}></label>`;
@@ -771,6 +847,7 @@ function bind() {
     S.auditNode = e.target.value;
     loadAudit();
   });
+  $("#token-retry")?.addEventListener("click", () => loadTokens());
   $("#more")?.addEventListener("click", () => loadAudit(true));
   const policy = $("#policy-form");
   if (policy) {
@@ -851,7 +928,17 @@ document.addEventListener("click", async (e) => {
   const { action, kind, id, name: tag } = button.dataset;
   try {
     if (["create", "edit"].includes(action)) {
-      edit(kind, id);
+      if (kind === "tokens") editToken(id);
+      else edit(kind, id);
+      return;
+    }
+    if (action === "token-revoke") {
+      const item = S.tokens.find((t) => t.id === id);
+      confirm("吊销 Token", `确认永久吊销“${item.name}”？该凭据将不能再发起 MCP 请求。已开始的操作不保证中止。`, async () => {
+        await api("/mcp-tokens/" + id, { method: "DELETE", etag: `"${item.version}"` });
+        await loadTokens();
+        toast("Token 已吊销");
+      });
       return;
     }
     if (action === "probe") {

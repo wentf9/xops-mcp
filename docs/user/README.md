@@ -9,7 +9,7 @@ XOps MCP 运行在能够访问目标 SSH 主机的 Linux 服务器上。浏览�
 1. 选择[容器部署](container.md)，或用已有程序[直接运行](install.md)。
 2. 打开管理页面，使用初始化码创建管理员账户。
 3. 在控制台添加主机、核对公钥、填写凭据，并启用节点。
-4. 按[控制台与客户端指南](console.md)连接 MCP 客户端。
+4. 在 [MCP Token](tokens.md) 页面创建客户端凭据，按[控制台与客户端指南](console.md)连接 MCP 客户端。
 
 管理页面通常使用端口 `8081`，MCP 使用端口 `8080`。管理员密码和 MCP 访问凭据各自独立。
 
@@ -17,6 +17,7 @@ XOps MCP 运行在能够访问目标 SSH 主机的 Linux 服务器上。浏览�
 
 | 操作 | 文档 |
 | --- | --- |
+| 创建、停用或吊销客户端 Token | [MCP Token 管理](tokens.md) |
 | 更改监听地址、路径或 HTTPS | [配置说明](configuration.md) |
 | 管理节点、跳板、标签和策略 | [控制台与客户端](console.md) |
 | 批量导入或从 xops-cli 导入 | [配置导入](import.md) |

@@ -24,6 +24,7 @@ import (
 	"github.com/wentf9/xops-cli/core/mcp/state"
 	"github.com/wentf9/xops-mcp/internal/adminauth"
 	"github.com/wentf9/xops-mcp/internal/config"
+	"github.com/wentf9/xops-mcp/internal/mcpauth"
 	"github.com/wentf9/xops-mcp/internal/operations"
 	"github.com/wentf9/xops-mcp/internal/service"
 	"github.com/wentf9/xops-mcp/internal/storage"
@@ -32,6 +33,7 @@ import (
 type Store interface {
 	storage.Repository
 	storage.AdminRepository
+	storage.MCPTokenRepository
 }
 type Probes interface {
 	TestConnection(context.Context, ports.Permit, string) error
@@ -49,6 +51,7 @@ type Server struct {
 	store        Store
 	editor       *service.Editor
 	auth         *adminauth.Manager
+	mcpTokens    *mcpauth.Manager
 	cipher       *adminauth.RequestCipher
 	probes       Probes
 	tracker      *operations.Tracker
@@ -116,6 +119,7 @@ func New(store Store, editor *service.Editor, probes Probes, tracker *operations
 	}
 	s := &Server{store: store, editor: editor, auth: auth, cipher: cipher, probes: probes, tracker: tracker, hosts: map[string]bool{}, scheme: u.Scheme, requests: make(chan struct{}, 32), logins: make(chan struct{}, 2), probeSlots: make(chan struct{}, 4), attempts: map[string]attempt{}, observations: map[string]observation{}}
 	s.basePath = basePath
+	s.mcpTokens = &mcpauth.Manager{Store: store}
 	for _, raw := range append([]string{u.Host}, options.AllowedHosts...) {
 		host, err := canonicalHost(raw, u.Scheme)
 		if err != nil {
@@ -142,6 +146,10 @@ func (s *Server) Handler(assets http.Handler) http.Handler {
 	mux.Handle("POST /api/v1/auth/logout", s.authorize(http.HandlerFunc(s.logout)))
 	mux.Handle("PUT /api/v1/auth/password", s.authorize(http.HandlerFunc(s.password)))
 	mux.Handle("GET /api/v1/inventory", s.authorize(http.HandlerFunc(s.inventory)))
+	mux.Handle("GET /api/v1/mcp-tokens", s.authorize(http.HandlerFunc(s.listMCPTokens)))
+	mux.Handle("POST /api/v1/mcp-tokens", s.authorize(http.HandlerFunc(s.createMCPToken)))
+	mux.Handle("PUT /api/v1/mcp-tokens/{id}", s.authorize(http.HandlerFunc(s.updateMCPToken)))
+	mux.Handle("DELETE /api/v1/mcp-tokens/{id}", s.authorize(http.HandlerFunc(s.revokeMCPToken)))
 	for _, kind := range []string{"hosts", "identities", "nodes", "credentials", "tags"} {
 		mux.Handle("POST /api/v1/"+kind, s.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { s.save(w, r, kind) })))
 		mux.Handle("PUT /api/v1/"+kind+"/{id}", s.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { s.save(w, r, kind) })))

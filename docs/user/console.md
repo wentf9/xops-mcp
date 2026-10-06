@@ -40,15 +40,15 @@
 | --- | --- |
 | 连接类型 | Streamable HTTP |
 | 服务地址 | 例如 `http://127.0.0.1:8080/mcp` |
-| 访问凭据 | `mcp.token` 文件的完整内容，去除末尾换行 |
+| 访问凭据 | 在 [MCP Token](tokens.md) 页面创建时复制的完整 Token |
 
 需要手动填写请求头的客户端使用：
 
 ```text
-Authorization: Bearer <mcp.token 文件内容>
+Authorization: Bearer <创建时复制的 Token>
 ```
 
-容器部署可用 `sudo cat examples/deployment/.secrets/mcp.token` 查看。不要填写管理员密码、初始化码或管理登录密钥，也不要连接管理页面的端口或路径。
+每个客户端使用独立的 Token。不要填写管理员密码、初始化码或管理登录密钥，也不要连接管理页面的端口或路径。
 
 连接后先查询节点列表，再选择节点执行命令。可用操作包括命令执行、文本读写、目录和文件管理、上传及下载。以客户端实际显示的工具为准。
 

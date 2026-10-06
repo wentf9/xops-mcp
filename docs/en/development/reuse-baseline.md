@@ -7,24 +7,24 @@
 | Item | Fixed value |
 | --- | --- |
 | Upstream module | `github.com/wentf9/xops-cli` |
-| Version | `v0.13.1-0.20261003125647-0d4bd2fb866c` |
-| Commit | [`0d4bd2fb866ce4d3cd4a79f90a2df63ff7560b08`](https://github.com/wentf9/xops-cli/commit/0d4bd2fb866ce4d3cd4a79f90a2df63ff7560b08) |
+| Version | `v0.13.1-0.20261005131907-09af1745dc9e` |
+| Commit | [`09af1745dc9e65c06e381e20f5f1c892133ff0de`](https://github.com/wentf9/xops-cli/commit/09af1745dc9e65c06e381e20f5f1c892133ff0de) |
 | Minimum Go | `1.26.0` |
 | MCP SDK | `v1.8.0` |
 
-The pin includes pinned host-key algorithm negotiation and multi-key fixtures. It is reachable from upstream master and does not depend on a deleted feature branch. go.mod/go.sum are authoritative; do not commit local replacements or workspaces.
+The pin includes injectable client authentication, session and transfer isolation, bounded authentication admission, and the pinned host-key algorithm repair. It is published on `feat/mcp-client-auth`. Retain this branch until the commit is reachable from mainline or the consumer has switched to a verified, downloadable mainline pin. go.mod/go.sum are authoritative; do not commit local replacements or workspaces.
 
 Production and tests import only upstream `core/*`. `internal/dependencycheck` checks Linux/Windows/macOS dependency graphs and explicitly compiles the product against the remote pin. Listing dependencies alone does not replace compilation.
 
 ## Independent consumer
 
 ```sh
-GOWORK=off python3 scripts/check_core_consumer.py --version v0.13.1-0.20261003125647-0d4bd2fb866c
+GOWORK=off python3 scripts/check_core_consumer.py --version v0.13.1-0.20261005131907-09af1745dc9e
 ```
 
 The script copies `internal/coreconsumer` into a temporary module, checks the fixed version without replacements and all three platform graphs, then runs build, race, lint and real local SSH/SFTP. `--upstream /path/to/xops-cli` is only a local preview, not evidence of a published version.
 
-The 2026-10-03 record covers independent Linux/amd64 consumption, a fresh-cache `GOPROXY=direct` download and Windows/macOS product cross-builds. This historical evidence does not establish current remote CI or native Windows/macOS service acceptance.
+On 2026-10-05, a fresh module cache with `GOPROXY=direct` on Linux/amd64 downloaded this version and verified the exact remote commit above. Product build/lint and full SQLite/PostgreSQL race suites with `GOWORK=off`, independent consumer build/race/lint, all three platform dependency graphs, and HTTP/HTTPS browser flows passed. These results do not establish native Windows/macOS service acceptance or remote CI status.
 
 ## Product validation
 

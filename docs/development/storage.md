@@ -6,7 +6,7 @@
 
 ## 数据与更新
 
-SQLite 当前 schema v6；PostgreSQL 当前 schema v3，两个后端迁移历史独立。当前实体包括 hosts、identities、nodes、tags、credentials、credential_versions、policies、sources、tombstones、admin 和 audit_events。node_jumps 保留有序跳板，node_tags 通过稳定 tag ID 关联。旧管理员会话表已移除。
+SQLite 当前 schema v7；PostgreSQL 当前 schema v4，两个后端迁移历史独立。当前实体包括 hosts、identities、nodes、tags、credentials、credential_versions、policies、sources、tombstones、admin、mcp_tokens 和 audit_events。node_jumps 保留有序跳板，node_tags 通过稳定 tag ID 关联。旧管理员会话表已移除。
 
 业务写入使用 expected revision。service 先建立协调器准入屏障，数据库提交后再发布快照；提交结果不确定或发布失败时，通过 Reconcile 重读已提交状态，不能盲目重放写入。普通编辑保留已准入操作的原目标；禁用、策略或凭据撤销遵循共享 gate 契约。
 
@@ -24,9 +24,9 @@ PostgreSQL 使用独立 SQL、JSONB/BYTEA 和 identity 序列。读事务使用 
 
 ## 离线归档
 
-归档 format 为 1，整体使用部署主密钥认证加密，大小上限 256 MiB。包含库存、密钥校验、全部历史凭据/来源、管理员密码哈希和审计，不包含配置、外部密钥或 journal。
+归档仅支持 format 2，文件头为 `XOPSDB\x02`，加密认证上下文为 `xops-mcp database backup v2`，内部 `Format` 必须为 2。v1 和其他版本直接拒绝，不提供兼容读取或格式转换。整体使用部署主密钥认证加密，大小上限 256 MiB。包含库存、密钥校验、全部历史凭据/来源、管理员密码哈希、MCP Token 记录和审计，不包含配置、外部密钥或 journal。
 
-Restore 只允许初始化后的空目标，在一笔事务内保留原 domain/revision/ID，恢复数据库记录及审计序列。逐个验证历史密文可解密，并验证当前 source 与可执行视图一致。归档校验不能代替 journal 或远端文件核验。JWT 不写入数据库，其有效性由密钥、domain、prefix 和过期时间决定。
+Restore 只允许初始化后的空目标，在一笔事务内保留原 domain/revision/ID，恢复数据库记录及审计序列。逐个验证历史密文可解密，并验证当前 source 与可执行视图一致。归档验证将缺失、`null` 和空的 `MCPTokens` 统一为空数组，确保导入后的内容摘要一致。归档校验不能代替 journal 或远端文件核验。JWT 不写入数据库，其有效性由密钥、domain、prefix 和过期时间决定。
 
 ## 验证范围
 

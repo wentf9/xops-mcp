@@ -10,6 +10,7 @@ Administrator routes are under `<web_base_path>/api/v1/` on the management port;
 
 | Endpoint | Purpose |
 | --- | --- |
+| `GET` / `POST /mcp-tokens`, `PUT` / `DELETE /mcp-tokens/{id}` | [MCP token management and record versions](mcp-auth.md) |
 | `GET /auth/challenge?action=...` | RSA JWK and a 90-second challenge for login/setup/password; password changes require a Bearer JWT |
 | `GET /auth/session` | Authentication/setup state and JWT expiry |
 | `POST /auth/setup`, `POST /auth/login` | JWE `ciphertext`, decrypting to `username/password`; setup additionally includes `token` |

@@ -12,6 +12,7 @@ XOps MCP 是可自行部署的远程运维服务。通过 Web 控制台管理 SS
 
 - [配置、访问地址与 HTTPS](docs/user/configuration.md)
 - [控制台与 MCP 客户端](docs/user/console.md)
+- [MCP Token 管理](docs/user/tokens.md)
 - [导入主机和凭据](docs/user/import.md)
 - [PostgreSQL 与数据库迁移](docs/user/postgresql.md)
 - [备份与故障处理](docs/user/maintenance.md)

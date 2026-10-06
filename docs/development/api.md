@@ -10,6 +10,7 @@
 
 | 接口 | 用途 |
 | --- | --- |
+| `GET` / `POST /mcp-tokens`、`PUT` / `DELETE /mcp-tokens/{id}` | [MCP Token 管理与记录版本](mcp-auth.md) |
 | `GET /auth/challenge?action=...` | 返回 RSA JWK 与 90 秒签名挑战；改密需 Bearer JWT |
 | `GET /auth/session` | 登录/初始化状态与 JWT 有效期 |
 | `POST /auth/setup`、`POST /auth/login` | JWE `ciphertext`；解密后为 `username/password`，初始化另含 `token` |

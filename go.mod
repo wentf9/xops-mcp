@@ -7,7 +7,7 @@ require (
 	github.com/gofrs/flock v0.13.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/wentf9/xops-cli v0.13.1-0.20261003125647-0d4bd2fb866c
+	github.com/wentf9/xops-cli v0.13.1-0.20261005131907-09af1745dc9e
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/sys v0.48.0

@@ -72,6 +72,10 @@ PostgreSQL remains single-instance. High availability, distributed scheduling, s
 
 Administrators use 15-minute JWTs with client-side logout and natural expiry after password changes. Verification never accesses session storage. Setup, login and password changes use standard JWE over configurable HTTP/HTTPS; 90-second signed challenges bind purpose and the password-change JWT. SQLite v6 / PostgreSQL v3 remove legacy sessions. Authentication instances share deployment ID, prefix and external keys; database locks, runtime state and the journal still keep the product single-instance. See [authentication contracts](admin-auth.md) for details and acceptance.
 
+## MCP Token management (implemented)
+
+The console manages multiple tokens with digests, record versions and separate client IDs, supporting creation, editing, expiry, disablement and permanent revocation. SQLite/PostgreSQL and encrypted archives preserve identities and state. An injectable core verifier isolates client sessions, operation bindings and file tasks. See [MCP client authentication](mcp-auth.md). Per-client permissions, credential rotation and identity revocation of running work remain future work.
+
 ## Continuing release requirements
 
 Update tests and corresponding documentation with code changes. Before code pushes or PRs, pass `go build ./...`, `go test ./...`, and `golangci-lint run ./...`; verify modified lint configuration. Record real-host validation, unit tests, cross-builds, and native execution separately.

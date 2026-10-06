@@ -12,6 +12,7 @@ Start with the [user guide](docs/en/user/README.md). For a new installation, see
 
 - [Configuration, addresses and HTTPS](docs/en/user/configuration.md)
 - [Web console and MCP clients](docs/en/user/console.md)
+- [MCP Token management](docs/en/user/tokens.md)
 - [Importing hosts and credentials](docs/en/user/import.md)
 - [PostgreSQL and database migration](docs/en/user/postgresql.md)
 - [Backups and troubleshooting](docs/en/user/maintenance.md)

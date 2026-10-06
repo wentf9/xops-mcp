@@ -20,11 +20,10 @@ The program runs as UID/GID `65532:65532`. Prepare an accessible directory:
 sudo install -d -m 0700 -o 65532 -g 65532 examples/deployment/.secrets
 ```
 
-Generate separate data, MCP access, management signing, password encryption and administrator setup keys:
+Generate separate data, management signing, password encryption and administrator setup keys:
 
 ```sh
 docker run --rm --network none --mount "type=bind,src=$PWD/examples/deployment/.secrets,dst=/secrets" xops-mcp:local keygen --out /secrets/master.key
-docker run --rm --network none --mount "type=bind,src=$PWD/examples/deployment/.secrets,dst=/secrets" xops-mcp:local keygen --out /secrets/mcp.token
 docker run --rm --network none --mount "type=bind,src=$PWD/examples/deployment/.secrets,dst=/secrets" xops-mcp:local keygen --out /secrets/admin.jwt.key
 docker run --rm --network none --mount "type=bind,src=$PWD/examples/deployment/.secrets,dst=/secrets" xops-mcp:local keygen --type rsa --out /secrets/admin.encryption.key
 docker run --rm --network none --mount "type=bind,src=$PWD/examples/deployment/.secrets,dst=/secrets" xops-mcp:local keygen --out /secrets/admin.setup
@@ -39,7 +38,6 @@ Edit `examples/deployment/container.yaml`. For direct HTTP access from the host,
 ```yaml
 data_dir: /var/lib/xops-mcp/data
 master_key_file: /run/secrets/xops/master.key
-mcp_token_file: /run/secrets/xops/mcp.token
 admin_jwt_key_file: /run/secrets/xops/admin.jwt.key
 admin_encryption_key_file: /run/secrets/xops/admin.encryption.key
 admin_bootstrap_token_file: /run/secrets/xops/admin.setup
@@ -77,7 +75,7 @@ Open `http://127.0.0.1:8081/console/`. Read the setup code:
 sudo cat examples/deployment/.secrets/admin.setup
 ```
 
-Create the administrator in the browser. The MCP address is `http://127.0.0.1:8080/mcp`, with the credential stored in `.secrets/mcp.token`; see [client connections](console.md).
+Create the administrator in the browser, then create a client credential on the [MCP Token](tokens.md) page. The MCP address is `http://127.0.0.1:8080/mcp`; see [client connections](console.md).
 
 The example publishes ports only on the host's loopback interface. For LAN access, change both Compose `ports` and the two public addresses. Changing only the container's `web_listen` is insufficient. For example, use `8080:8080` and `8081:8081` and set public addresses to the server's actual address.
 

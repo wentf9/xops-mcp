@@ -19,7 +19,6 @@ GOWORK=off go build -o bin/xops-mcp ./cmd/xops-mcp
 mkdir -m 0700 -p .local
 cp examples/server.yaml .local/server.yaml
 bin/xops-mcp keygen --out .local/master.key
-bin/xops-mcp keygen --out .local/mcp.token
 bin/xops-mcp keygen --out .local/admin.jwt.key
 bin/xops-mcp keygen --type rsa --out .local/admin.encryption.key
 bin/xops-mcp keygen --out .local/admin.setup
@@ -87,3 +86,5 @@ npm run test:browser
 - 在独立临时目录重放密钥生成、配置初始化、导入、备份与恢复命令。用 `openssl pkey -check -noout` 验证 RSA 文件，不打印私钥。
 - 容器流程应使用隔离镜像标签、项目名、端口和卷，验证 UID 65532 的权限；不要重建或停止用户正在使用的容器。
 - 修改文档不意味着自动提交或推送。仓库有用户修改时，先确认边界并保留其内容。
+
+跨仓库联调时可以使用仓库外的 `go.work`，显式设置 `GOWORK=/path/to/go.work`；浏览器测试通过 `XOPS_TEST_GOWORK=/path/to/go.work` 将同一工作区传给构建夹具。共享内核发布并更新 `go.mod` 固定版本后，须重新通过 `GOWORK=off` 的独立构建和验证。

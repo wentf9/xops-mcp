@@ -40,15 +40,15 @@ Configure a client supporting Streamable HTTP:
 | --- | --- |
 | Transport | Streamable HTTP |
 | Service URL | For example, `http://127.0.0.1:8080/mcp` |
-| Access credential | Complete contents of `mcp.token`, without the final newline |
+| Access credential | Complete token copied when creating it on the [MCP Token](tokens.md) page |
 
 Clients requiring an explicit header use:
 
 ```text
-Authorization: Bearer <contents of mcp.token>
+Authorization: Bearer <token copied at creation>
 ```
 
-For containers, read it with `sudo cat examples/deployment/.secrets/mcp.token`. Do not use the administrator password, setup code or management-signing key, and do not connect to the management page's port/path.
+Use a separate token for each client. Do not use the administrator password, setup code or management-signing key, and do not connect to the management page's port/path.
 
 First list nodes, then choose a node for commands. Available operations include command execution, text files, directory/file management, uploads and downloads. Use the tools shown by the client.
 

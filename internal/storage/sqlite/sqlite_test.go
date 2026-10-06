@@ -34,7 +34,7 @@ func openTest(t *testing.T) (*Store, *secure.Vault, string) {
 
 func TestMigrationLockIdentityAndWrongKey(t *testing.T) {
 	s, vault, dir := openTest(t)
-	for query, want := range map[string]string{"PRAGMA journal_mode": "wal", "PRAGMA foreign_keys": "1", "PRAGMA user_version": "6"} {
+	for query, want := range map[string]string{"PRAGMA journal_mode": "wal", "PRAGMA foreign_keys": "1", "PRAGMA user_version": "7"} {
 		var got string
 		if err := s.db.QueryRowContext(t.Context(), query).Scan(&got); err != nil || got != want {
 			t.Fatalf("%s = %s: %v", query, got, err)
@@ -223,7 +223,7 @@ func TestStatelessMigrationRemovesLegacySessions(t *testing.T) {
 	if err := s.InitializeAdmin(t.Context(), storage.Admin{Username: "admin", PasswordHash: []byte("fixture-hash"), Version: "v1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.ExecContext(t.Context(), `CREATE TABLE admin_sessions(digest BLOB PRIMARY KEY,admin_version TEXT,expires_at INTEGER);
+	if _, err := s.db.ExecContext(t.Context(), `DROP TABLE mcp_tokens; CREATE TABLE admin_sessions(digest BLOB PRIMARY KEY,admin_version TEXT,expires_at INTEGER);
 INSERT INTO admin_sessions VALUES(zeroblob(32),'v1',9999999999); PRAGMA user_version=5`); err != nil {
 		t.Fatal(err)
 	}

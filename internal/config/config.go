@@ -167,6 +167,9 @@ func (c Config) HTTPOptions() (mcpruntime.HTTPOptions, error) {
 	options.StateDir = filepath.Join(c.DataDir, "transfers")
 	options.AllowedHosts, options.AllowedOrigins = c.AllowedHosts, c.AllowedOrigins
 	options.ToolTimeout, options.ShutdownTimeout = c.ToolTimeout, c.ShutdownTimeout
+	if c.MCPTokenFile == "" {
+		return options, nil
+	}
 	data, err := ReadFile(c.MCPTokenFile, 4098, true)
 	if err != nil {
 		return options, err

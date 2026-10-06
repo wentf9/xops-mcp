@@ -46,16 +46,18 @@ func (c Config) AdminKeys() ([]byte, *rsa.PrivateKey, error) {
 	if bytes.Equal(key, master) {
 		return nil, nil, errors.New("administrator JWT and master key must differ")
 	}
-	mcp, err := ReadFile(c.MCPTokenFile, 4098, true)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer clear(mcp)
-	// HTTPOptions uses the trimmed file bytes as the bearer secret. Reject
-	// that same secret both literally and in its hexadecimal representation.
-	mcpToken := bytes.TrimSpace(mcp)
-	if bytes.Equal(mcpToken, key) || strings.EqualFold(string(mcpToken), hex.EncodeToString(key)) {
-		return nil, nil, errors.New("administrator JWT and MCP token must differ")
+	if c.MCPTokenFile != "" {
+		mcp, err := ReadFile(c.MCPTokenFile, 4098, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		defer clear(mcp)
+		// HTTPOptions uses the trimmed file bytes as the bearer secret. Reject
+		// that same secret both literally and in its hexadecimal representation.
+		mcpToken := bytes.TrimSpace(mcp)
+		if bytes.Equal(mcpToken, key) || strings.EqualFold(string(mcpToken), hex.EncodeToString(key)) {
+			return nil, nil, errors.New("administrator JWT and MCP token must differ")
+		}
 	}
 	data, err := ReadFile(c.AdminEncryptionKeyFile, 16<<10, true)
 	if err != nil {

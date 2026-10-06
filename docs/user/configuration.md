@@ -12,7 +12,7 @@
 | `database_driver` | `sqlite`（默认）或 `postgres` |
 | `postgres_dsn_file` | 使用 PostgreSQL 时必填，数据库连接文件 |
 | `master_key_file` | 必填，数据主密钥；丢失后无法恢复保存的远程凭据 |
-| `mcp_token_file` | 启动服务时必填，MCP 客户端的访问凭据 |
+| `mcp_token_file` | 可选，预置初始 MCP Token 的私有文件；正常使用可直接在控制台创建 |
 | `admin_jwt_key_file` | 启用管理页面时必填，管理登录签名密钥 |
 | `admin_encryption_key_file` | 启用管理页面时必填，密码加密密钥，用 `keygen --type rsa` 生成 |
 | `admin_bootstrap_token_file` | 可选，首次创建管理员所需的初始化码 |

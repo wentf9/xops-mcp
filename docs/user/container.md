@@ -20,11 +20,10 @@ docker compose -f examples/deployment/compose.yaml build --pull
 sudo install -d -m 0700 -o 65532 -g 65532 examples/deployment/.secrets
 ```
 
-分别生成数据主密钥、MCP 访问凭据、管理登录签名密钥、密码加密密钥和管理员初始化码：
+分别生成数据主密钥、管理登录签名密钥、密码加密密钥和管理员初始化码：
 
 ```sh
 docker run --rm --network none --mount "type=bind,src=$PWD/examples/deployment/.secrets,dst=/secrets" xops-mcp:local keygen --out /secrets/master.key
-docker run --rm --network none --mount "type=bind,src=$PWD/examples/deployment/.secrets,dst=/secrets" xops-mcp:local keygen --out /secrets/mcp.token
 docker run --rm --network none --mount "type=bind,src=$PWD/examples/deployment/.secrets,dst=/secrets" xops-mcp:local keygen --out /secrets/admin.jwt.key
 docker run --rm --network none --mount "type=bind,src=$PWD/examples/deployment/.secrets,dst=/secrets" xops-mcp:local keygen --type rsa --out /secrets/admin.encryption.key
 docker run --rm --network none --mount "type=bind,src=$PWD/examples/deployment/.secrets,dst=/secrets" xops-mcp:local keygen --out /secrets/admin.setup
@@ -39,7 +38,6 @@ docker run --rm --network none --mount "type=bind,src=$PWD/examples/deployment/.
 ```yaml
 data_dir: /var/lib/xops-mcp/data
 master_key_file: /run/secrets/xops/master.key
-mcp_token_file: /run/secrets/xops/mcp.token
 admin_jwt_key_file: /run/secrets/xops/admin.jwt.key
 admin_encryption_key_file: /run/secrets/xops/admin.encryption.key
 admin_bootstrap_token_file: /run/secrets/xops/admin.setup
@@ -77,7 +75,7 @@ docker compose -f examples/deployment/compose.yaml logs --tail=50 xops-mcp
 sudo cat examples/deployment/.secrets/admin.setup
 ```
 
-在页面创建管理员账户。MCP 地址为 `http://127.0.0.1:8080/mcp`，访问凭据来自 `.secrets/mcp.token`，详见[客户端连接](console.md)。
+在页面创建管理员账户，再打开 [MCP Token](tokens.md) 页面创建客户端访问凭据。MCP 地址为 `http://127.0.0.1:8080/mcp`，详见[客户端连接](console.md)。
 
 示例将端口发布到宿主机回环地址。供局域网使用时，同时修改 Compose 的 `ports` 和配置中的两个公开地址，不能只修改容器内的 `web_listen`。例如把端口映射改成 `8080:8080`、`8081:8081`，并将公开地址改成服务器的实际地址。
 

@@ -2,7 +2,6 @@ data_dir: /var/lib/xops-mcp/data
 master_key_file: /run/secrets/xops/master.key
 admin_jwt_key_file: /run/secrets/xops/admin.jwt.key
 admin_encryption_key_file: /run/secrets/xops/admin.encryption.key
-mcp_token_file: /run/secrets/xops/mcp.token
 admin_bootstrap_token_file: /run/secrets/xops/admin.setup
 web_enabled: true
 web_listen: 0.0.0.0:8081

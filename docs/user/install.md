@@ -18,7 +18,6 @@ umask 077
 
 ```sh
 xops-mcp keygen --out master.key
-xops-mcp keygen --out mcp.token
 xops-mcp keygen --out admin.jwt.key
 xops-mcp keygen --type rsa --out admin.encryption.key
 xops-mcp keygen --out admin.setup
@@ -32,7 +31,6 @@ xops-mcp keygen --out admin.setup
 database_driver: sqlite
 data_dir: data
 master_key_file: master.key
-mcp_token_file: mcp.token
 admin_jwt_key_file: admin.jwt.key
 admin_encryption_key_file: admin.encryption.key
 admin_bootstrap_token_file: admin.setup
@@ -58,7 +56,7 @@ xops-mcp serve --config server.yaml
 
 保持该终端运行。打开 `http://127.0.0.1:8081/`，使用 `admin.setup` 文件中的初始化码创建管理员。完成后可删除初始化码文件，保留其他密钥。
 
-新服务没有节点。按[控制台指南](console.md)添加并启用节点，再连接 MCP 客户端。MCP 地址为 `http://127.0.0.1:8080/mcp`。
+新服务没有节点。按[控制台指南](console.md)添加并启用节点，并在 [MCP Token](tokens.md) 页面创建访问凭据，再连接 MCP 客户端。MCP 地址为 `http://127.0.0.1:8080/mcp`。
 
 按 `Ctrl+C` 停止服务。停止后可以检查数据：
 

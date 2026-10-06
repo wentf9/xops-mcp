@@ -5,7 +5,6 @@ data_dir: postgres-data
 master_key_file: master.key
 admin_jwt_key_file: admin.jwt.key
 admin_encryption_key_file: admin.encryption.key
-mcp_token_file: mcp.token
 admin_bootstrap_token_file: admin.setup
 web_enabled: true
 # Enable native HTTPS with web_tls_enabled and certificate/key paths.

@@ -15,6 +15,7 @@ import (
 	mcpruntime "github.com/wentf9/xops-cli/core/mcp/runtime"
 	"github.com/wentf9/xops-mcp/internal/api"
 	"github.com/wentf9/xops-mcp/internal/config"
+	"github.com/wentf9/xops-mcp/internal/mcpauth"
 	"github.com/wentf9/xops-mcp/internal/operations"
 	"github.com/wentf9/xops-mcp/internal/service"
 	"github.com/wentf9/xops-mcp/internal/storage"
@@ -72,6 +73,10 @@ func NewApplication(ctx context.Context, cfg config.Config) (_ *Application, ret
 		}
 	}()
 	tracker := operations.New(host.Service.Coordinator)
+	mcpTokens := &mcpauth.Manager{Store: host.Store}
+	initialToken := options.Token
+	options.Token = ""
+	options.TokenVerifier = mcpTokens.Verify
 	dependencies := host.Dependencies()
 	dependencies.Gate = tracker
 	lifetime, cancel := context.WithCancel(ctx)
@@ -109,7 +114,7 @@ func NewApplication(ctx context.Context, cfg config.Config) (_ *Application, ret
 			}
 			setup = string(bytes.TrimSpace(data))
 			clear(data)
-			if setup == options.Token {
+			if setup == initialToken {
 				return nil, errors.New("administrator setup and MCP must use different tokens")
 			}
 		} else if err != nil && !errors.Is(err, storage.ErrNotFound) {
@@ -125,6 +130,9 @@ func NewApplication(ctx context.Context, cfg config.Config) (_ *Application, ret
 			return nil, err
 		}
 		adminHandler = admin.Handler(web.Handler())
+	}
+	if err := mcpTokens.Seed(ctx, initialToken); err != nil {
+		return nil, err
 	}
 	options.Token = ""
 	app := &Application{Host: host, Runtime: runtime, options: options, webOptions: webOptions, webTLS: webTLS}

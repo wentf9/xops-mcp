@@ -18,9 +18,9 @@ import (
 )
 
 const MaxSize = 256 << 20
-const envelopeContext = "xops-mcp database backup v1"
+const envelopeContext = "xops-mcp database backup v2"
 
-var magic = []byte("XOPSDB\x01")
+var magic = []byte("XOPSDB\x02")
 
 func sourceKey(s storage.Source) string {
 	return fmt.Sprintf("%s\x00%s\x00%s\x00%d\x00%s\x00%s", s.Token, s.NodeID, s.Host, s.Port, s.User, s.Purpose)
@@ -29,7 +29,7 @@ func sourceKey(s storage.Source) string {
 // Validate authenticates every historical credential, reconstructs current
 // ciphertext from immutable versions, and verifies executable source bindings.
 func Validate(ctx context.Context, b *storage.Backup, vault *secure.Vault) error {
-	if b.Format != 1 || b.Inventory.DomainID == "" || b.Inventory.Revision > 1<<63-1 {
+	if b.Format != storage.BackupFormat || b.Inventory.DomainID == "" || b.Inventory.Revision > 1<<63-1 {
 		return errors.New("unsupported or invalid database archive")
 	}
 	plain, err := vault.Open("deployment:"+b.Inventory.DomainID, b.KeyCheck)
@@ -121,6 +121,21 @@ func Validate(ctx context.Context, b *storage.Backup, vault *secure.Vault) error
 	if b.Admin != nil && (b.Admin.Username == "" || b.Admin.Version == "" || len(b.Admin.PasswordHash) == 0) {
 		return errors.New("invalid archived administrator")
 	}
+	// Empty collections have one representation for hashing and database exports.
+	if b.MCPTokens == nil {
+		b.MCPTokens = []storage.MCPTokenRecord{}
+	}
+	ids, digests := map[string]bool{}, map[string]bool{}
+	for _, record := range b.MCPTokens {
+		if err := record.Validate(); err != nil {
+			return err
+		}
+		if ids[record.Token.ID] || digests[record.Digest] {
+			return errors.New("duplicate archived MCP token")
+		}
+		ids[record.Token.ID], digests[record.Digest] = true, true
+	}
+	slices.SortFunc(b.MCPTokens, func(a, b storage.MCPTokenRecord) int { return strings.Compare(a.Token.ID, b.Token.ID) })
 	for id, n := range b.Inventory.Nodes {
 		slices.Sort(n.Aliases)
 		slices.Sort(n.TagIDs)

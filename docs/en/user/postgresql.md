@@ -38,7 +38,7 @@ Container users should use the image commands in the [container guide](container
 
 ## Move between databases
 
-Stop both source and target services for the whole operation and retain a complete source backup. Prepare `source.yaml` for the source and `target.yaml` for an empty target database and separate data directory. Use the same master key, management keys and MCP access credential in the target.
+Stop both source and target services for the whole operation and retain a complete source backup. Prepare `source.yaml` for the source and `target.yaml` for an empty target database and separate data directory. Use the same master and management keys in the target. MCP token records migrate with the database archive, so clients keep their existing tokens.
 
 Run from the directory containing these files:
 

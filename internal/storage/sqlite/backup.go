@@ -20,12 +20,16 @@ func (s *Store) Export(ctx context.Context) (_ storage.Backup, retErr error) {
 		return storage.Backup{}, err
 	}
 	defer rollback(tx, &retErr)
-	b := storage.Backup{Format: 1}
+	b := storage.Backup{Format: storage.BackupFormat}
 	b.Inventory, err = loadInventory(ctx, tx)
 	if err != nil {
 		return b, err
 	}
 	if err := tx.QueryRowContext(ctx, "SELECT key_check FROM deployment WHERE singleton=1").Scan(&b.KeyCheck); err != nil {
+		return b, err
+	}
+	b.MCPTokens, err = loadMCPTokens(ctx, tx)
+	if err != nil {
 		return b, err
 	}
 	a := storage.BackupAdmin{}
@@ -94,7 +98,7 @@ func (s *Store) Restore(ctx context.Context, b storage.Backup) (retErr error) {
 	if revision != 0 {
 		return errors.New("database restore requires an empty target")
 	}
-	for _, table := range []string{"hosts", "identities", "nodes", "credentials", "credential_versions", "tags", "tombstones", "sources", "audit_events", "admin"} {
+	for _, table := range []string{"hosts", "identities", "nodes", "credentials", "credential_versions", "tags", "tombstones", "sources", "audit_events", "admin", "mcp_tokens"} {
 		var count int
 		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil {
 			return err
@@ -120,6 +124,12 @@ func (s *Store) Restore(ctx context.Context, b storage.Backup) (retErr error) {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, "INSERT INTO audit_events(id,occurred_at,operation_id,tool,outcome,event) VALUES(?,?,?,?,?,?)", a.ID, a.Event.Timestamp.Format(time.RFC3339Nano), a.Event.OperationID, a.Event.Tool, a.Event.Outcome, data); err != nil {
+			return err
+		}
+	}
+	for _, record := range b.MCPTokens {
+		t := record.Token
+		if _, err := tx.ExecContext(ctx, "INSERT INTO mcp_tokens("+mcpTokenColumns+") VALUES(?,?,?,?,?,?,?,?,?,?)", t.ID, t.ClientID, t.Name, t.Prefix, record.Digest, t.Version, t.Enabled, t.CreatedAt, t.ExpiresAt, t.RevokedAt); err != nil {
 			return err
 		}
 	}
