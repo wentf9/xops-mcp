@@ -4,6 +4,27 @@
 
 Run from the repository root. Use Go 1.26+ and golangci-lint v2; browser checks also require Node.js 22 and Playwright. Release checks set `GOWORK=off` and do not rely on adjacent checkouts or local replacements.
 
+## Makefile targets
+
+With GNU Make installed, use the following targets. Running `make` or `make help` lists all targets.
+
+| Command | Purpose |
+| --- | --- |
+| `make build` | Build the actual executable at `bin/xops-mcp` |
+| `make run CONFIG=.local/server.yaml` | Rebuild and serve an initialized local deployment |
+| `make check` | Check all Go packages build, run Go tests and lint, and verify module tidiness and dependency integrity |
+| `make test-race` | Run race tests with the current test backend |
+| `make test-sqlite` / `make test-postgres` | Run the same business tests and race checks with SQLite / PostgreSQL |
+| `make fmt` | Format Go source files |
+| `make web-install` | Install Web test dependencies from the lockfile |
+| `make web-check` / `make test-browser` | Check Web assets / check assets and run browser acceptance |
+| `make docker-build` | Build the `xops-mcp:local` container image |
+| `make clean` | Remove the executable selected by `BINARY` and `coverage.out`, preserving data, configuration and keys |
+
+Override `BINARY`, `CONFIG`, `IMAGE` and `TEST_FLAGS` as needed, for example `make build BINARY=dist/xops-mcp`. Tests default to `-count=1 -timeout=120s`. Set `GO`, `GOLANGCI_LINT`, `NPM` and `DOCKER` to select tool paths.
+
+The Makefile defaults to `GOWORK=off`, overriding an inherited environment variable. For joint development, explicitly pass `make GOWORK=/path/to/go.work build`; keep the default for release checks. `make check` excludes dual-backend race and browser acceptance; prepare PostgreSQL and a browser as described below, then run their targets separately. `make test-postgres` requires `XOPS_TEST_POSTGRES_DSN` and fails immediately when it is missing. `make run` executes `serve`; prepare configuration and keys as described below first.
+
 ## Build the actual executable
 
 ```sh

@@ -4,6 +4,27 @@
 
 命令均从仓库根目录执行。需要 Go 1.26+、golangci-lint v2；浏览器验证另需 Node.js 22 和 Playwright。发布检查使用 `GOWORK=off`，不依赖相邻 checkout 或本地 replace。
 
+## Makefile 入口
+
+安装 GNU Make 后，可使用以下目标；单独执行 `make` 或 `make help` 显示全部目标。
+
+| 命令 | 用途 |
+| --- | --- |
+| `make build` | 构建实际程序到 `bin/xops-mcp` |
+| `make run CONFIG=.local/server.yaml` | 重新构建并启动已初始化的本地部署 |
+| `make check` | 检查所有 Go 包构建、Go 测试、lint、模块整洁性和依赖完整性 |
+| `make test-race` | 对当前测试后端运行 race 测试 |
+| `make test-sqlite` / `make test-postgres` | 分别使用 SQLite / PostgreSQL 运行同一组业务测试和 race 检查 |
+| `make fmt` | 格式化 Go 源文件 |
+| `make web-install` | 按锁文件安装 Web 测试依赖 |
+| `make web-check` / `make test-browser` | 检查 Web 资源 / 检查资源并运行浏览器验收 |
+| `make docker-build` | 构建 `xops-mcp:local` 容器镜像 |
+| `make clean` | 删除 `BINARY` 指定的程序和 `coverage.out`，保留数据、配置与密钥 |
+
+可覆盖 `BINARY`、`CONFIG`、`IMAGE` 和 `TEST_FLAGS`，例如 `make build BINARY=dist/xops-mcp`。测试默认使用 `-count=1 -timeout=120s`。工具路径可通过 `GO`、`GOLANGCI_LINT`、`NPM` 和 `DOCKER` 指定。
+
+Makefile 默认设置 `GOWORK=off`，包括覆盖继承的环境变量；跨仓库联调须显式传入 `make GOWORK=/path/to/go.work build`。发布检查仍使用默认设置。`make check` 不包含双后端 race 和浏览器验收；按下文准备 PostgreSQL 与浏览器后单独执行相应目标。`make test-postgres` 要求设置 `XOPS_TEST_POSTGRES_DSN`，缺少时直接失败。`make run` 执行 `serve`，请先按下文准备配置与密钥。
+
 ## 构建实际程序
 
 ```sh
