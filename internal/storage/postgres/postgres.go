@@ -23,7 +23,7 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-const SchemaVersion = 4
+const SchemaVersion = 5
 const ownerLock int64 = 0x584f50534d4350
 
 type Store struct {
@@ -246,7 +246,7 @@ func (s *Store) migrate(ctx context.Context, vault *secure.Vault, allow bool) (r
 	if !allow && version != SchemaVersion {
 		return errors.New("database requires migration; run migrate first")
 	}
-	names := []string{"001_inventory.sql", "002_management.sql", "003_stateless_admin.sql", "004_mcp_tokens.sql"}
+	names := []string{"001_inventory.sql", "002_management.sql", "003_stateless_admin.sql", "004_mcp_tokens.sql", "005_mcp_token_nodes.sql"}
 	for index := version; index < len(names); index++ {
 		script, err := migrations.ReadFile("migrations/" + names[index])
 		if err != nil {

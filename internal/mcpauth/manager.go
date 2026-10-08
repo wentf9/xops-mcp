@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -19,11 +20,18 @@ import (
 
 var ErrInvalid = errors.New("invalid MCP token settings")
 
-type Manager struct{ Store storage.MCPTokenRepository }
+type Manager struct {
+	Store storage.MCPTokenRepository
+	// Updates and final admission share this lock so a completed scope edit
+	// cannot race a new permit issued using the previous permissions.
+	mu sync.RWMutex
+}
 type Input struct {
-	Name      string `json:"name"`
-	Enabled   bool   `json:"enabled"`
-	ExpiresAt int64  `json:"expiresAt"`
+	Name      string   `json:"name"`
+	Enabled   bool     `json:"enabled"`
+	ExpiresAt int64    `json:"expiresAt"`
+	NodeScope string   `json:"nodeScope"`
+	NodeIDs   []string `json:"nodeIDs"`
 }
 
 func digest(raw string) string {
@@ -73,11 +81,16 @@ func validate(in Input) error {
 }
 
 func (m *Manager) Create(ctx context.Context, in Input) (storage.MCPToken, string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if err := validate(in); err != nil {
 		return storage.MCPToken{}, "", err
 	}
 	raw := "xmcp_" + rand.Text() + rand.Text()
-	t := storage.MCPToken{ID: rand.Text(), ClientID: rand.Text(), Name: in.Name, Prefix: raw[:12], Version: 1, Enabled: in.Enabled, CreatedAt: time.Now().Unix(), ExpiresAt: in.ExpiresAt}
+	t := storage.MCPToken{ID: rand.Text(), ClientID: rand.Text(), Name: in.Name, Prefix: raw[:12], Version: 1, Enabled: in.Enabled, CreatedAt: time.Now().Unix(), ExpiresAt: in.ExpiresAt, NodeScope: in.NodeScope, NodeIDs: in.NodeIDs}
+	if err := t.NormalizeNodeScope(); err != nil {
+		return storage.MCPToken{}, "", errors.Join(ErrInvalid, err)
+	}
 	err := m.Store.SaveMCPToken(ctx, 0, storage.MCPTokenRecord{Token: t, Digest: digest(raw)}, event("create", t.ID))
 	if err != nil {
 		return storage.MCPToken{}, "", err
@@ -90,6 +103,8 @@ func (m *Manager) Create(ctx context.Context, in Input) (storage.MCPToken, strin
 // Its initial client ID preserves the static-token runtime's SHA-256 scope;
 // retained journal records and their authorization bindings remain valid.
 func (m *Manager) Seed(ctx context.Context, raw string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if raw == "" {
 		return nil
 	}
@@ -105,6 +120,8 @@ func (m *Manager) Seed(ctx context.Context, raw string) error {
 }
 
 func (m *Manager) Update(ctx context.Context, id string, version uint64, in Input, revoke bool) (storage.MCPToken, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	records, err := m.Store.MCPTokens(ctx)
 	if err != nil {
 		return storage.MCPToken{}, err
@@ -127,6 +144,16 @@ func (m *Manager) Update(ctx context.Context, id string, version uint64, in Inpu
 				return storage.MCPToken{}, ErrInvalid
 			}
 			t.Name, t.Enabled, t.ExpiresAt = in.Name, in.Enabled, in.ExpiresAt
+			// Older clients may edit metadata without knowing node scopes. Never
+			// let an omitted scope silently broaden an existing restriction.
+			if in.NodeScope != "" {
+				t.NodeScope, t.NodeIDs = in.NodeScope, in.NodeIDs
+			} else if in.NodeIDs != nil {
+				return storage.MCPToken{}, ErrInvalid
+			}
+			if err := t.NormalizeNodeScope(); err != nil {
+				return storage.MCPToken{}, errors.Join(ErrInvalid, err)
+			}
 		}
 		t.Version++
 		if err := m.Store.SaveMCPToken(ctx, version, record, event(action, id)); err != nil {

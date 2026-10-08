@@ -15,8 +15,8 @@ import (
 // normalized by the current archive encoder before the import is exercised.
 func archiveTokenList(t *testing.T, encrypted []byte, vault *secure.Vault, tokens json.RawMessage) []byte {
 	t.Helper()
-	const magic = "XOPSDB\x02"
-	const purpose = "xops-mcp database backup v2"
+	const magic = "XOPSDB\x03"
+	const purpose = "xops-mcp database backup v3"
 	plain, err := vault.Open(purpose, encrypted[len(magic):])
 	if err != nil {
 		t.Fatal(err)

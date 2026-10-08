@@ -50,7 +50,7 @@ const pages = {
   policy: ["操作策略", "管理风险确认、命令拦截与受保护路径。", "◎"],
   operations: ["运行中", "查看当前准入操作及其执行阶段。", "↗"],
   audit: ["审计记录", "查看授权、配置变更与执行结果。", "≡"],
-  tokens: ["MCP Token", "为客户端分别创建访问凭据，独立设置有效期和启停状态。", "⚿"],
+  tokens: ["MCP Token", "为客户端分别创建访问凭据，独立设置节点范围、有效期和启停状态。", "⚿"],
   account: ["账户", "管理管理员密码和当前会话。", "⚙"],
 };
 const dialog = $("#dialog"),
@@ -492,15 +492,49 @@ function renderAudit() {
     S.auditFilter !== JSON.stringify([S.outcome, S.auditNode]);
   $("#audit-retry")?.addEventListener("click", () => loadAudit());
 }
+function tokenScopeSummary(item) {
+  if (item.nodeScope !== "selected") return "全部节点";
+  const ids = item.nodeIDs || [];
+  if (!ids.length) return "无节点访问权限";
+  const deleted = ids.filter((id) => !S.v.nodes.some((node) => node.id === id)).length;
+  return `指定 ${ids.length} 个节点${deleted ? `（${deleted} 个已删除）` : ""}`;
+}
+function tokenScopeFields(item) {
+  const selected = new Set(item.nodeIDs || []);
+  const nodes = S.v.nodes.map((node) => ({ ...node, deleted: false }));
+  for (const id of selected) {
+    if (!nodes.some((node) => node.id === id)) nodes.push({ id, name: "已删除节点", deleted: true });
+  }
+  return `<label>允许访问的节点<select name="nodeScope" aria-label="允许访问的节点" aria-describedby="token-scope-help"><option value="all" ${item.nodeScope !== "selected" ? "selected" : ""}>全部节点</option><option value="selected" ${item.nodeScope === "selected" ? "selected" : ""}>指定节点</option></select></label><p id="token-scope-help" class="hint">全部节点包含以后新增的节点；指定节点仅允许访问勾选的节点，未勾选任何节点表示无节点访问权限。节点改名不影响绑定。</p><fieldset id="token-node-selection" class="token-node-selection"><legend>绑定节点</legend>${field("搜索节点", "nodeSearch", "", 'type="search" placeholder="名称、别名或节点 ID" autocomplete="off"')}<div class="token-node-options">${nodes.map((node) => `<label class="check token-node-option" data-search="${esc([node.name, node.id, ...(node.aliases || [])].join(" ").toLocaleLowerCase())}"><input type="checkbox" name="nodeIDs" value="${esc(node.id)}" ${selected.has(node.id) ? "checked" : ""}><span>${esc(node.name)}${node.disabled ? "（已停用）" : ""}<small>${esc(node.id)}</small></span></label>`).join("")}</div><p id="token-no-matches" class="hint" hidden>没有匹配的节点。</p>${nodes.length ? "" : '<p class="hint">暂无节点，可保存为空范围，之后再编辑绑定。</p>'}${nodes.some((node) => node.deleted) ? '<p class="hint">已删除节点无法访问，可取消勾选移除绑定。新建同名节点不会自动获得权限。</p>' : ""}<p id="token-node-count" class="hint" role="status"></p></fieldset>`;
+}
+function bindTokenScope(form) {
+  const select = form.elements.nodeScope;
+  const selection = $("#token-node-selection", form);
+  const update = () => {
+    selection.hidden = select.value !== "selected";
+    selection.disabled = select.value !== "selected";
+    const count = selection.querySelectorAll('[name="nodeIDs"]:checked').length;
+    $("#token-node-count", form).textContent = count ? `已勾选 ${count} 个节点` : "未勾选节点，此 Token 无节点访问权限。";
+  };
+  select.addEventListener("change", update);
+  selection.addEventListener("change", update);
+  form.elements.nodeSearch.addEventListener("input", (event) => {
+    const search = event.target.value.trim().toLocaleLowerCase();
+    const options = [...selection.querySelectorAll(".token-node-option")];
+    for (const option of options) option.hidden = !option.dataset.search.includes(search);
+    $("#token-no-matches", form).hidden = !options.length || options.some((option) => !option.hidden);
+  });
+  update();
+}
 function tokenTable() {
   if (S.tokens === null) return S.tokenError
     ? empty("Token 加载失败", esc(S.tokenError)) + '<button id="token-retry">重试加载</button>'
     : empty("正在加载 Token", "");
   if (!S.tokens.length) return empty("尚未创建 Token", "为每个 MCP 客户端创建独立的访问凭据。");
-  return `<div class="panel">${table(["名称 / 凭据前缀", "状态", "到期时间", "创建时间", "操作"], S.tokens.map((t) => {
+  return `<div class="panel">${table(["名称 / 凭据前缀", "节点范围", "状态", "到期时间", "创建时间", "操作"], S.tokens.map((t) => {
     const revoked = t.revokedAt > 0, expired = t.expiresAt && t.expiresAt * 1000 <= Date.now();
     const status = revoked ? "已吊销" : expired ? "已过期" : t.enabled ? "已启用" : "已停用";
-    return `<tr><td><strong>${esc(t.name)}</strong><small class="token-prefix">${esc(t.prefix)}…</small></td><td>${chip(status, revoked || expired || !t.enabled ? "neutral" : "good")}</td><td>${t.expiresAt ? date(t.expiresAt * 1000) : "永不过期"}</td><td>${date(t.createdAt * 1000)}</td><td>${revoked ? "—" : `<div class="row-actions"><button data-action="edit" data-kind="tokens" data-id="${esc(t.id)}">编辑</button><button class="danger" data-action="token-revoke" data-id="${esc(t.id)}">吊销</button></div>`}</td></tr>`;
+    return `<tr><td><strong>${esc(t.name)}</strong><small class="token-prefix">${esc(t.prefix)}…</small></td><td>${tokenScopeSummary(t)}</td><td>${chip(status, revoked || expired || !t.enabled ? "neutral" : "good")}</td><td>${t.expiresAt ? date(t.expiresAt * 1000) : "永不过期"}</td><td>${date(t.createdAt * 1000)}</td><td>${revoked ? "—" : `<div class="row-actions"><button data-action="edit" data-kind="tokens" data-id="${esc(t.id)}">编辑</button><button class="danger" data-action="token-revoke" data-id="${esc(t.id)}">吊销</button></div>`}</td></tr>`;
   }))}</div>`;
 }
 async function loadTokens() {
@@ -540,10 +574,12 @@ function editToken(id) {
   const item = id ? S.tokens.find((t) => t.id === id) : { name: "", enabled: true, expiresAt: 0 };
   const generation = authGeneration;
   const form = modal(id ? "编辑 Token" : "新建 Token", nameField("名称", item.name) +
+    tokenScopeFields(item) +
     field("到期时间（留空表示永不过期）", "expiresAt", localDateTime(item.expiresAt), 'type="datetime-local" step="1" max="9999-12-31T23:59:59"') +
     `<label class="check"><input type="checkbox" name="enabled" ${item.enabled ? "checked" : ""}>启用 Token</label>`, async (data, submitted) => {
       const expires = data.get("expiresAt");
-      const body = { name: data.get("name"), enabled: data.has("enabled"), expiresAt: expires ? Math.floor(new Date(expires).getTime() / 1000) : 0 };
+      const nodeScope = data.get("nodeScope");
+      const body = { name: data.get("name"), enabled: data.has("enabled"), expiresAt: expires ? Math.floor(new Date(expires).getTime() / 1000) : 0, nodeScope, nodeIDs: nodeScope === "selected" ? data.getAll("nodeIDs") : [] };
       submitted.dataset.busy = "true";
       submitted.querySelectorAll("[data-close]").forEach((b) => b.disabled = true);
       try {
@@ -557,6 +593,7 @@ function editToken(id) {
         submitted.querySelectorAll("[data-close]").forEach((b) => b.disabled = false);
       }
     }, id ? "保存" : "创建 Token");
+  bindTokenScope(form);
   // Do not discard a one-time secret while creation is in flight.
   form.addEventListener("keydown", (event) => { if (event.key === "Escape" && form.dataset.busy) event.preventDefault(); });
 }

@@ -78,7 +78,8 @@ func NewApplication(ctx context.Context, cfg config.Config) (_ *Application, ret
 	options.Token = ""
 	options.TokenVerifier = mcpTokens.Verify
 	dependencies := host.Dependencies()
-	dependencies.Gate = tracker
+	access := &mcpauth.Access{Manager: mcpTokens, State: dependencies.State, Gate: tracker}
+	dependencies.State, dependencies.Gate = access, access
 	lifetime, cancel := context.WithCancel(ctx)
 	stopHost := context.AfterFunc(host.lifetime, cancel)
 	defer func() {
@@ -125,7 +126,7 @@ func NewApplication(ctx context.Context, cfg config.Config) (_ *Application, ret
 			return nil, err
 		}
 		defer clear(jwtKey)
-		admin, err := api.New(host.Store, &service.Editor{Service: host.Service, Vault: host.Vault}, host.materials, tracker, api.Options{PublicURL: webOptions.PublicURL, BasePath: webOptions.BasePath, AllowedHosts: webOptions.AllowedHosts, SetupToken: setup, JWTKey: jwtKey, EncryptionKey: encryptionKey})
+		admin, err := api.New(host.Store, &service.Editor{Service: host.Service, Vault: host.Vault}, host.materials, tracker, api.Options{MCPTokens: mcpTokens, PublicURL: webOptions.PublicURL, BasePath: webOptions.BasePath, AllowedHosts: webOptions.AllowedHosts, SetupToken: setup, JWTKey: jwtKey, EncryptionKey: encryptionKey})
 		if err != nil {
 			return nil, err
 		}

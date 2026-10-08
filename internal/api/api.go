@@ -39,6 +39,7 @@ type Probes interface {
 	TestConnection(context.Context, ports.Permit, string) error
 }
 type Options struct {
+	MCPTokens     *mcpauth.Manager
 	PublicURL     string
 	BasePath      string
 	AllowedHosts  []string
@@ -120,6 +121,9 @@ func New(store Store, editor *service.Editor, probes Probes, tracker *operations
 	s := &Server{store: store, editor: editor, auth: auth, cipher: cipher, probes: probes, tracker: tracker, hosts: map[string]bool{}, scheme: u.Scheme, requests: make(chan struct{}, 32), logins: make(chan struct{}, 2), probeSlots: make(chan struct{}, 4), attempts: map[string]attempt{}, observations: map[string]observation{}}
 	s.basePath = basePath
 	s.mcpTokens = &mcpauth.Manager{Store: store}
+	if options.MCPTokens != nil {
+		s.mcpTokens = options.MCPTokens
+	}
 	for _, raw := range append([]string{u.Host}, options.AllowedHosts...) {
 		host, err := canonicalHost(raw, u.Scheme)
 		if err != nil {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/wentf9/xops-mcp/internal/mcpauth"
+	"github.com/wentf9/xops-mcp/internal/storage"
 )
 
 func (s *Server) listMCPTokens(w http.ResponseWriter, r *http.Request) {
@@ -63,8 +64,8 @@ func (s *Server) revokeMCPToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func mcpTokenFailure(w http.ResponseWriter, err error) {
-	if errors.Is(err, mcpauth.ErrInvalid) {
-		problem(w, 422, "invalid_token_settings", "请填写有效名称和将来的到期时间")
+	if errors.Is(err, mcpauth.ErrInvalid) || errors.Is(err, storage.ErrInvalidMCPTokenScope) {
+		problem(w, 422, "invalid_token_settings", "请检查名称、到期时间和节点访问范围；绑定节点必须存在")
 		return
 	}
 	failure(w, err)

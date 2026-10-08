@@ -403,6 +403,100 @@ async function checkLogoutSessionRace({ page, state }, lateStatus, duringLogin =
 }
 
 const cases = {
+  async tokenNodeScopeCreate({ page, state }) {
+    populate(state);
+    const literal = '<img src=x onerror="window.xopsInjected=true">';
+    state.inventory.nodes[1].name = literal;
+    let saved;
+    state.routes.set("/api/v1/mcp-tokens", (route) => {
+      if (route.request().method() === "GET") return json(route, { tokens: saved ? [saved] : [] });
+      saved = { ...route.request().postDataJSON(), id: "scoped", version: 1, prefix: "xmcp_test", createdAt: 1 };
+      return json(route, { item: saved, token: "synthetic-one-time-token" }, 201);
+    });
+    await page.goto(origin + "/#tokens");
+    await page.getByRole("button", { name: "新建Token", exact: false }).click();
+    const form = page.locator("dialog[open]");
+    await form.getByLabel("名称", { exact: true }).fill("scoped-client");
+    assert.equal(await form.getByLabel("允许访问的节点", { exact: true }).inputValue(), "all");
+    assert.equal(await form.getByRole("group", { name: "绑定节点" }).isVisible(), false);
+    await form.getByLabel("允许访问的节点", { exact: true }).selectOption("selected");
+    await form.locator('[name="nodeIDs"][value="a"]').check();
+    await form.getByLabel("搜索节点", { exact: true }).fill("img");
+    assert.equal(await form.locator('[name="nodeIDs"][value="a"]').isVisible(), false);
+    await form.getByLabel(literal, { exact: false }).check();
+    assert.equal(await form.locator("img").count(), 0);
+    assert.equal(await page.evaluate(() => window.xopsInjected), undefined);
+    // Filtering and toggling the scope do not discard the current selections.
+    await form.getByLabel("允许访问的节点", { exact: true }).selectOption("all");
+    await form.getByLabel("允许访问的节点", { exact: true }).selectOption("selected");
+    await form.getByRole("button", { name: "创建 Token", exact: true }).click();
+    await form.getByRole("button", { name: "我已保存" }).click();
+    await page.getByRole("row").filter({ hasText: "scoped-client" }).getByText("指定 2 个节点", { exact: true }).waitFor();
+    assert.equal(saved.nodeScope, "selected");
+    assert.deepEqual(saved.nodeIDs, ["a", "b"]);
+  },
+  async tokenNodeScopeEmpty({ page, state }) {
+    let saved;
+    state.routes.set("/api/v1/mcp-tokens", (route) => {
+      if (route.request().method() === "GET") return json(route, { tokens: saved ? [saved] : [] });
+      saved = { ...route.request().postDataJSON(), id: "empty", version: 1, createdAt: 1 };
+      return json(route, { item: saved, token: "synthetic-empty-scope-token" }, 201);
+    });
+    await page.goto(origin + "/#tokens");
+    await page.getByRole("button", { name: "新建Token", exact: false }).click();
+    const form = page.locator("dialog[open]");
+    await form.getByLabel("名称", { exact: true }).fill("no-nodes");
+    await form.getByLabel("允许访问的节点", { exact: true }).selectOption("selected");
+    await form.getByText("暂无节点，可保存为空范围，之后再编辑绑定。", { exact: true }).waitFor();
+    await form.getByRole("button", { name: "创建 Token", exact: true }).click();
+    await form.getByRole("button", { name: "我已保存" }).click();
+    await page.getByRole("row").filter({ hasText: "no-nodes" }).getByText("无节点访问权限", { exact: true }).waitFor();
+    assert.equal(saved.nodeScope, "selected");
+    assert.deepEqual(saved.nodeIDs, []);
+  },
+  async tokenNodeScopeEdit({ page, state }) {
+    populate(state);
+    let item = { id: "scoped", name: "scoped-client", version: 7, enabled: true, expiresAt: 0, createdAt: 1, nodeScope: "selected", nodeIDs: ["a", "deleted-id"] };
+    const submissions = [];
+    state.routes.set("/api/v1/mcp-tokens", (route) => json(route, { tokens: [item] }));
+    state.routes.set("/api/v1/mcp-tokens/scoped", (route) => {
+      submissions.push({ body: route.request().postDataJSON(), etag: route.request().headers()["if-match"] });
+      item = { ...item, ...submissions.at(-1).body, version: item.version + 1 };
+      return json(route, { item });
+    });
+    await page.goto(origin + "/#tokens");
+    const row = page.getByRole("row").filter({ hasText: "scoped-client" });
+    await row.getByText("指定 2 个节点（1 个已删除）", { exact: true }).waitFor();
+    await row.getByRole("button", { name: "编辑", exact: true }).click();
+    const form = page.locator("dialog[open]");
+    assert.equal(await form.getByLabel("允许访问的节点", { exact: true }).inputValue(), "selected");
+    assert.equal(await form.locator('[name="nodeIDs"][value="deleted-id"]').isChecked(), true);
+    await form.getByRole("button", { name: "保存", exact: true }).click();
+    await form.waitFor({ state: "hidden" });
+    assert.deepEqual(submissions[0].body.nodeIDs, ["a", "deleted-id"]);
+    assert.equal(submissions[0].etag, '"7"');
+    await page.reload();
+    await row.getByRole("button", { name: "编辑", exact: true }).click();
+    await form.locator('[name="nodeIDs"][value="deleted-id"]').uncheck();
+    await form.locator('[name="nodeIDs"][value="b"]').check();
+    await form.getByRole("button", { name: "保存", exact: true }).click();
+    await row.getByText("指定 2 个节点", { exact: true }).waitFor();
+    assert.deepEqual(submissions[1].body.nodeIDs, ["a", "b"]);
+    await row.getByRole("button", { name: "编辑", exact: true }).click();
+    await form.getByLabel("允许访问的节点", { exact: true }).selectOption("all");
+    await form.getByRole("button", { name: "保存", exact: true }).click();
+    await row.getByText("全部节点", { exact: true }).waitFor();
+    assert.equal(submissions[2].body.nodeScope, "all");
+    assert.deepEqual(submissions[2].body.nodeIDs, []);
+  },
+  async tokenLegacyScope({ page, state }) {
+    state.routes.set("/api/v1/mcp-tokens", (route) => json(route, { tokens: [{ id: "legacy", name: "legacy-client", version: 1, enabled: true, createdAt: 1 }] }));
+    await page.goto(origin + "/#tokens");
+    const row = page.getByRole("row").filter({ hasText: "legacy-client" });
+    await row.getByText("全部节点", { exact: true }).waitFor();
+    await row.getByRole("button", { name: "编辑", exact: true }).click();
+    assert.equal(await page.locator("dialog[open]").getByLabel("允许访问的节点", { exact: true }).inputValue(), "all");
+  },
   async logoutSessionResponseAfterLogin(fixture) { await checkLogoutSessionRace(fixture, 200); },
   async logoutSessionErrorAfterLogin(fixture) { await checkLogoutSessionRace(fixture, 503); },
   async logoutSessionResponseDuringLogin(fixture) { await checkLogoutSessionRace(fixture, 200, true); },

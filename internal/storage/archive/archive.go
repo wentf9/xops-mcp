@@ -18,9 +18,9 @@ import (
 )
 
 const MaxSize = 256 << 20
-const envelopeContext = "xops-mcp database backup v2"
+const envelopeContext = "xops-mcp database backup v3"
 
-var magic = []byte("XOPSDB\x02")
+var magic = []byte("XOPSDB\x03")
 
 func sourceKey(s storage.Source) string {
 	return fmt.Sprintf("%s\x00%s\x00%s\x00%d\x00%s\x00%s", s.Token, s.NodeID, s.Host, s.Port, s.User, s.Purpose)
@@ -126,7 +126,16 @@ func Validate(ctx context.Context, b *storage.Backup, vault *secure.Vault) error
 		b.MCPTokens = []storage.MCPTokenRecord{}
 	}
 	ids, digests := map[string]bool{}, map[string]bool{}
-	for _, record := range b.MCPTokens {
+	for i := range b.MCPTokens {
+		record := &b.MCPTokens[i]
+		// Unlike backward-compatible token creation, v3 archives must state
+		// their scope explicitly. Missing permissions must never become all.
+		if record.Token.NodeScope == "" {
+			return storage.ErrInvalidMCPTokenScope
+		}
+		if err := record.Token.NormalizeNodeScope(); err != nil {
+			return err
+		}
 		if err := record.Validate(); err != nil {
 			return err
 		}

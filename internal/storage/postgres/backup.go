@@ -152,7 +152,11 @@ func (s *Store) Restore(ctx context.Context, b storage.Backup) (retErr error) {
 	tokenBatch := newInsertBatch(ctx, tx, "INSERT INTO mcp_tokens("+mcpTokenColumns+")", "")
 	for _, record := range b.MCPTokens {
 		t := record.Token
-		if err := tokenBatch.add(t.ID, t.ClientID, t.Name, t.Prefix, record.Digest, t.Version, t.Enabled, t.CreatedAt, t.ExpiresAt, t.RevokedAt); err != nil {
+		nodeIDs, err := json.Marshal(t.NodeIDs)
+		if err != nil {
+			return err
+		}
+		if err := tokenBatch.add(t.ID, t.ClientID, t.Name, t.Prefix, record.Digest, t.Version, t.Enabled, t.CreatedAt, t.ExpiresAt, t.RevokedAt, t.NodeScope, string(nodeIDs)); err != nil {
 			return err
 		}
 	}

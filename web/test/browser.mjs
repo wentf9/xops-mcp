@@ -146,6 +146,9 @@ try {
   await nav("MCP Token");
   await page.getByRole("button", { name: "新建Token", exact: false }).click();
   await form().getByLabel("名称", { exact: true }).fill("browser-client");
+  assert.equal(await form().getByLabel("允许访问的节点", { exact: true }).inputValue(), "all");
+  await form().getByLabel("允许访问的节点", { exact: true }).selectOption("selected");
+  await form().getByText("暂无节点，可保存为空范围，之后再编辑绑定。", { exact: true }).waitFor();
   await form().getByLabel("到期时间（留空表示永不过期）").fill("2099-10-05T12:34:56");
   await form().getByRole("button", { name: "创建 Token", exact: true }).click();
   await form().getByRole("heading", { name: "Token 已创建" }).waitFor();
@@ -155,14 +158,19 @@ try {
   await page.locator("#created-token").waitFor({ state: "detached" });
   await page.getByRole("row").filter({ hasText: "browser-client" }).waitFor();
   assert.equal(await page.locator("#created-token").count(), 0);
-  const metadata = await request("get", info.url + "api/v1/mcp-tokens", { headers: { Authorization: "Bearer " + await token() } });
+  const metadata = await request("get", info.url + "/api/v1/mcp-tokens", { headers: { Authorization: "Bearer " + await token() } });
+  assert.equal(metadata.status(), 200);
   const metadataText = await metadata.text();
   assert(!metadataText.includes(mcpSecret));
   assert(!metadataText.includes("Digest"));
+  const emptyScopeToken = JSON.parse(metadataText).tokens.find((item) => item.name === "browser-client");
+  assert.equal(emptyScopeToken.nodeScope, "selected");
+  assert.deepEqual(emptyScopeToken.nodeIDs, []);
   await metadata.dispose();
   const tokenRow = () => page.getByRole("row").filter({ hasText: "browser-client" });
   await page.screenshot({ path: resolve(artifacts, `mcp-tokens-${useTLS ? "https" : "http"}.png`), fullPage: true });
   await tokenRow().getByRole("button", { name: "编辑", exact: true }).click();
+  assert.equal(await form().getByLabel("允许访问的节点", { exact: true }).inputValue(), "selected");
   assert.equal(await form().getByLabel("到期时间（留空表示永不过期）").inputValue(), "2099-10-05T12:34:56");
   await form().getByLabel("启用 Token", { exact: true }).uncheck();
   await save();
@@ -317,6 +325,45 @@ try {
   await form().getByLabel("service", { exact: true }).check();
   await form().getByLabel("启用节点", { exact: true }).check();
   await save();
+  await nav("MCP Token");
+  await page.getByRole("button", { name: "新建Token", exact: false }).click();
+  await form().getByLabel("名称", { exact: true }).fill("browser-scoped-client");
+  await form().getByLabel("允许访问的节点", { exact: true }).selectOption("selected");
+  await form().getByLabel("搜索节点", { exact: true }).fill(browserAliases[0]);
+  const allowedNode = form().getByLabel("browser-node", { exact: false });
+  await allowedNode.check();
+  const allowedNodeID = await allowedNode.inputValue();
+  await page.screenshot({ path: resolve(artifacts, `mcp-token-scope-${useTLS ? "https" : "http"}.png`), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  assert.equal(await form().evaluate((dialog) => dialog.scrollWidth > dialog.clientWidth), false);
+  await page.screenshot({ path: resolve(artifacts, `mcp-token-scope-mobile-${useTLS ? "https" : "http"}.png`), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await form().getByRole("button", { name: "创建 Token", exact: true }).click();
+  await form().getByRole("button", { name: "我已保存" }).click();
+  const scopedRow = () => page.getByRole("row").filter({ hasText: "browser-scoped-client" });
+  await scopedRow().getByText("指定 1 个节点", { exact: true }).waitFor();
+  await page.reload();
+  await scopedRow().getByRole("button", { name: "编辑", exact: true }).click();
+  assert.equal(await form().getByLabel("允许访问的节点", { exact: true }).inputValue(), "selected");
+  assert.equal(await form().getByLabel("browser-node", { exact: false }).isChecked(), true);
+  assert.equal(await form().getByLabel("browser-node", { exact: false }).inputValue(), allowedNodeID);
+  await save();
+  const scopeMetadata = await request("get", info.url + "/api/v1/mcp-tokens", { headers: { Authorization: "Bearer " + await token() } });
+  assert.equal(scopeMetadata.status(), 200);
+  const storedScope = (await scopeMetadata.json()).tokens.find((item) => item.name === "browser-scoped-client");
+  await scopeMetadata.dispose();
+  assert.equal(storedScope.nodeScope, "selected");
+  assert.deepEqual(storedScope.nodeIDs, [allowedNodeID]);
+  await scopedRow().getByRole("button", { name: "编辑", exact: true }).click();
+  await form().getByLabel("browser-node", { exact: false }).uncheck();
+  await save();
+  await scopedRow().getByText("无节点访问权限", { exact: true }).waitFor();
+  await scopedRow().getByRole("button", { name: "编辑", exact: true }).click();
+  await form().getByLabel("允许访问的节点", { exact: true }).selectOption("all");
+  await save();
+  await scopedRow().getByText("全部节点", { exact: true }).waitFor();
+  await nav("节点总览");
   await page.getByRole("button", { name: "测试连接", exact: true }).click();
   await page
     .locator("#notices")
@@ -525,7 +572,7 @@ try {
   assert(encryptedRequests.some(url => url.endsWith("/setup")));
   assert(encryptedRequests.some(url => url.endsWith("/password")));
   console.log(
-    `Browser acceptance passed (${useTLS ? "HTTPS / Web Crypto" : "HTTP / embedded crypto"}): prefixed console/assets/API/JWT, isolated ports, external links, Unicode password setup/login/change, direct and independent host-key confirmation, credential/identity/node/tag CRUD, one-time MCP tokens, expiry, enable/revoke, real SSH test, revision conflict, XSS escaping, policy, audit, responsive layout and logout`,
+    `Browser acceptance passed (${useTLS ? "HTTPS / Web Crypto" : "HTTP / embedded crypto"}): prefixed console/assets/API/JWT, isolated ports, external links, Unicode password setup/login/change, direct and independent host-key confirmation, credential/identity/node/tag CRUD, one-time MCP tokens, node scopes, empty scopes, expiry, enable/revoke, real SSH test, revision conflict, XSS escaping, policy, audit, responsive layout and logout`,
   );
 } catch (error) {
   if (page) {

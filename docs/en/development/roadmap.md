@@ -74,7 +74,7 @@ Administrators use 15-minute JWTs with client-side logout and natural expiry aft
 
 ## MCP Token management (implemented)
 
-The console manages multiple tokens with digests, record versions and separate client IDs, supporting creation, editing, expiry, disablement and permanent revocation. SQLite/PostgreSQL and encrypted archives preserve identities and state. An injectable core verifier isolates client sessions, operation bindings and file tasks. See [MCP client authentication](mcp-auth.md). Per-client permissions, credential rotation and identity revocation of running work remain future work.
+The console manages multiple tokens with digests, record versions and separate client IDs, supporting creation, editing, independent node scopes, expiry, disablement and permanent revocation. SQLite v8 / PostgreSQL v5 and format 3 encrypted archives preserve identities, state and node bindings. An injectable core verifier isolates client sessions, operation bindings and file tasks. See [MCP client authentication](mcp-auth.md). Node lists and tool admission enforce token scopes; transfer-content and upload-commit admission recheck current authority. Existing tokens default to all nodes. Credential rotation and immediate identity revocation of running work remain future work.
 
 ## Continuing release requirements
 

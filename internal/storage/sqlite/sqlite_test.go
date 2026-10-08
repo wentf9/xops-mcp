@@ -34,7 +34,7 @@ func openTest(t *testing.T) (*Store, *secure.Vault, string) {
 
 func TestMigrationLockIdentityAndWrongKey(t *testing.T) {
 	s, vault, dir := openTest(t)
-	for query, want := range map[string]string{"PRAGMA journal_mode": "wal", "PRAGMA foreign_keys": "1", "PRAGMA user_version": "7"} {
+	for query, want := range map[string]string{"PRAGMA journal_mode": "wal", "PRAGMA foreign_keys": "1", "PRAGMA user_version": "8"} {
 		var got string
 		if err := s.db.QueryRowContext(t.Context(), query).Scan(&got); err != nil || got != want {
 			t.Fatalf("%s = %s: %v", query, got, err)

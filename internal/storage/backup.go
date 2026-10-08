@@ -1,8 +1,8 @@
 package storage
 
-// BackupFormat includes MCP credentials and client identities. Earlier readers
-// must reject this format instead of silently discarding these records.
-const BackupFormat = 2
+// BackupFormat includes MCP token node restrictions. Earlier readers must reject
+// this format instead of silently discarding restrictions and granting all nodes.
+const BackupFormat = 3
 
 // Backup is the backend-neutral, versioned offline database format. Sessions
 // are not persisted: JWT validity is determined by external keys and expiry.
