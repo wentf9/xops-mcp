@@ -58,8 +58,8 @@ github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UV
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/wentf9/xops-cli v0.13.1-0.20261006023507-477fa537d454 h1:t8C+RjxNL+mz/zqlhc9uxcIMUzEa2iygdD7uIFE2owE=
-github.com/wentf9/xops-cli v0.13.1-0.20261006023507-477fa537d454/go.mod h1:61J+6Y4YDr5tmuCjNhiU11AiByEap9EPlGz1YqI9Fcs=
+github.com/wentf9/xops-cli v0.13.1-0.20261008055759-9d95b47e3992 h1:rlZhkjs5LblA/NAsFqnC63T8QZKwj7yuj7s1Q1ZDe3M=
+github.com/wentf9/xops-cli v0.13.1-0.20261008055759-9d95b47e3992/go.mod h1:61J+6Y4YDr5tmuCjNhiU11AiByEap9EPlGz1YqI9Fcs=
 github.com/yosida95/uritemplate/v3 v3.0.2 h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=
 github.com/yosida95/uritemplate/v3 v3.0.2/go.mod h1:ILOh0sOhIJR3+L/8afwt/kE++YT040gmv5BQTMR2HP4=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
