@@ -11,6 +11,7 @@ import (
 	"github.com/wentf9/xops-cli/core/mcp/guardrail"
 	"github.com/wentf9/xops-cli/core/mcp/policy"
 	"github.com/wentf9/xops-cli/core/mcp/ports"
+	"github.com/wentf9/xops-cli/core/ssh"
 	"github.com/wentf9/xops-mcp/internal/adapters/xops"
 	"github.com/wentf9/xops-mcp/internal/secure"
 	"github.com/wentf9/xops-mcp/internal/storage"
@@ -37,15 +38,16 @@ type IdentityInput struct {
 	CredentialID string `json:"credentialID"`
 }
 type NodeInput struct {
-	Name                  string   `json:"name"`
-	HostID                string   `json:"hostID"`
-	IdentityID            string   `json:"identityID"`
-	JumpIDs               []string `json:"jumpIDs"`
-	Aliases               []string `json:"aliases"`
-	TagIDs                []string `json:"tagIDs"`
-	Disabled              bool     `json:"disabled"`
-	SudoMode              string   `json:"sudoMode"`
-	PrivilegeCredentialID string   `json:"privilegeCredentialID"`
+	Execution             *ssh.ExecutionConfig `json:"execution,omitempty"`
+	Name                  string               `json:"name"`
+	HostID                string               `json:"hostID"`
+	IdentityID            string               `json:"identityID"`
+	JumpIDs               []string             `json:"jumpIDs"`
+	Aliases               []string             `json:"aliases"`
+	TagIDs                []string             `json:"tagIDs"`
+	Disabled              bool                 `json:"disabled"`
+	SudoMode              string               `json:"sudoMode"`
+	PrivilegeCredentialID string               `json:"privilegeCredentialID"`
 }
 
 // MaterialInput is write-only. Public credential DTOs contain metadata only.
@@ -204,7 +206,7 @@ func (e *Editor) SaveNode(ctx context.Context, rev uint64, id string, in NodeInp
 		aliases := slices.Clone(in.Aliases)
 		slices.Sort(aliases)
 		aliases = slices.Compact(aliases)
-		v.Nodes[id] = storage.Node{ID: id, Name: in.Name, HostID: in.HostID, IdentityID: in.IdentityID, JumpIDs: slices.Clone(in.JumpIDs), Aliases: aliases, TagIDs: cleanList(in.TagIDs), Disabled: in.Disabled, SudoMode: in.SudoMode, PrivilegeCredentialID: in.PrivilegeCredentialID}
+		v.Nodes[id] = storage.Node{ID: id, Name: in.Name, HostID: in.HostID, IdentityID: in.IdentityID, JumpIDs: slices.Clone(in.JumpIDs), Aliases: aliases, TagIDs: cleanList(in.TagIDs), Disabled: in.Disabled, SudoMode: in.SudoMode, PrivilegeCredentialID: in.PrivilegeCredentialID, Execution: in.Execution.Clone()}
 		return nil
 	})
 }

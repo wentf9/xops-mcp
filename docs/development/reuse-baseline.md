@@ -7,24 +7,26 @@
 | 项目 | 固定值 |
 | --- | --- |
 | 上游 module | `github.com/wentf9/xops-cli` |
-| 版本 | `v0.13.1-0.20261008055759-9d95b47e3992` |
-| 提交 | [`9d95b47e39927dc56091da3ee4267e8c5f62f51d`](https://github.com/wentf9/xops-cli/commit/9d95b47e39927dc56091da3ee4267e8c5f62f51d) |
+| 版本 | `v0.14.0` |
+| 提交 | [`a12d52f4452109cf74f91f3a3bf99fac30dcedf0`](https://github.com/wentf9/xops-cli/commit/a12d52f4452109cf74f91f3a3bf99fac30dcedf0) |
 | Go 最低版本 | `1.26.0` |
 | MCP SDK | `v1.8.0` |
 
-该 pin 包含可注入的客户端认证、会话与文件任务隔离、独立认证并发额度，以及固定主机公钥算法协商修复；新增按接收流量进度判断的 SSH 心跳、具有总时限的缓存连接复检，以及远程转发请求与清理限时。消费端固定到当前上游 `master` 提交。实际依据是当前 go.mod/go.sum；不得提交本地 replace 或 go.work。
+消费端固定到上游正式发布的 `v0.14.0`，新增有界命令执行与结构化结果、单次调用执行配置覆盖、自动 Shell 探测、Bash/sh/zsh/fish 与 Windows 解释器适配，以及基于 SFTP 的文件管理。此前的认证、传输隔离和 SSH 生命周期修复仍包含在内。实际依据是 go.mod/go.sum；不得提交本地 replace 或 go.work。
+
+节点可选执行配置持久化于 SQLite v9 / PostgreSQL v6，并通过管理 API 和控制台编辑。适配器将配置副本放入 target，并提供 `ports.ExecutionVersion`，确保修改后旧准入绑定失效。CLI 导入将全局与节点配置继承结果展开到各节点。运行时自动探测结果仅用于操作，不写入库存。
 
 生产与测试都只导入上游 `core/*`。`internal/dependencycheck` 验证 Linux/Windows/macOS 依赖图，并显式用远端 pin 编译产品；依赖枚举不能替代编译。
 
 ## 独立消费者
 
 ```sh
-GOWORK=off python3 scripts/check_core_consumer.py --version v0.13.1-0.20261008055759-9d95b47e3992
+GOWORK=off python3 scripts/check_core_consumer.py --version v0.14.0
 ```
 
 脚本复制 `internal/coreconsumer` 到临时 module，校验固定版本、无替换、三平台依赖图，并执行 build、race、lint 和真实本地 SSH/SFTP。`--upstream /path/to/xops-cli` 仅用于临时联调，不能作为远端版本已发布的证据。
 
-2026-10-08 在 Linux/amd64 上以空 module 缓存和 `GOPROXY=direct` 下载该版本，确认来源为上述远端提交。`GOWORK=off` 产品构建与 lint、SQLite/PostgreSQL 全量 race、独立消费者 build/race/lint、三平台依赖图、HTTP/HTTPS 浏览器流程均通过；这些结果不代表原生 Windows/macOS 服务验收或远端 CI 结果。
+2026-10-13 在 Linux/amd64 上完成验收：空缓存 `GOPROXY=direct` 下载并核对 tag、提交和校验和；产品 build/lint、SQLite/PostgreSQL 全量 race、独立消费者 build/race/lint 与三平台依赖图、Web 资源检查、浏览器回归及 HTTP/HTTPS 流程均通过。协议夹具不代表部署主机上的原生 Shell 执行验收，也不代表原生 Windows/macOS 服务验收。
 
 ## 产品验证
 

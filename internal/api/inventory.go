@@ -82,7 +82,7 @@ func inventoryView(v storage.Inventory, pending bool) (inventoryDTO, error) {
 				}
 			}
 		}
-		view.Nodes = append(view.Nodes, nodeDTO{ID: id, NodeInput: service.NodeInput{Name: n.Name, HostID: n.HostID, IdentityID: n.IdentityID, JumpIDs: n.JumpIDs, Aliases: n.Aliases, TagIDs: n.TagIDs, Disabled: n.Disabled, SudoMode: n.SudoMode, PrivilegeCredentialID: n.PrivilegeCredentialID}, Status: status})
+		view.Nodes = append(view.Nodes, nodeDTO{ID: id, NodeInput: service.NodeInput{Name: n.Name, HostID: n.HostID, IdentityID: n.IdentityID, JumpIDs: n.JumpIDs, Aliases: n.Aliases, TagIDs: n.TagIDs, Disabled: n.Disabled, SudoMode: n.SudoMode, PrivilegeCredentialID: n.PrivilegeCredentialID, Execution: n.Execution.Clone()}, Status: status})
 		for _, tag := range n.TagIDs {
 			tags[tag]++
 		}

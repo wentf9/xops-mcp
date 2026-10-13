@@ -11,6 +11,7 @@ import (
 
 	"github.com/wentf9/xops-cli/core/mcp/policy"
 	"github.com/wentf9/xops-cli/core/mcp/ports"
+	"github.com/wentf9/xops-cli/core/ssh"
 )
 
 var ErrConflict = errors.New("inventory revision conflict")
@@ -29,6 +30,7 @@ type Tag struct {
 }
 
 type Node struct {
+	Execution                       *ssh.ExecutionConfig `json:",omitempty"`
 	ID, Name, HostID, IdentityID    string
 	JumpIDs                         []string
 	SudoMode, PrivilegeCredentialID string
@@ -66,6 +68,7 @@ func (v Inventory) Clone() Inventory {
 		v.Credentials[id] = credential
 	}
 	for id, node := range v.Nodes {
+		node.Execution = node.Execution.Clone()
 		node.JumpIDs = slices.Clone(node.JumpIDs)
 		node.Aliases = slices.Clone(node.Aliases)
 		node.TagIDs = slices.Clone(node.TagIDs)

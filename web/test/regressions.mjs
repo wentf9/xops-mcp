@@ -1308,6 +1308,186 @@ for (const kind of [
     assert.equal(await page.locator("#notices .notice").count(), 1);
   };
 }
+cases.node_execution_settings = async ({ page, state }) => {
+  populate(state);
+  state.inventory.nodes[0].execution = { interpreter: "zsh", launchDialect: "posix", login: false };
+  let saved;
+  state.routes.set("/api/v1/nodes/a", route => {
+    saved = route.request().postDataJSON();
+    Object.assign(state.inventory.nodes[0], saved);
+    return json(route, { revision: ++state.inventory.revision, id: "a" });
+  });
+  const open = async () => {
+    await page.locator('[data-action="edit"][data-kind="nodes"][data-id="a"]').first().click();
+    return page.locator("dialog[open] form");
+  };
+  await page.goto(origin + "/#nodes");
+  let form = await open();
+  assert.equal(await form.locator('[name="interpreter"]').inputValue(), "zsh");
+  assert.equal(await form.locator('[name="login"]').inputValue(), "false");
+  await form.getByRole("button", { name: "保存", exact: true }).click();
+  await page.locator("dialog[open]").waitFor({ state: "hidden" });
+  assert.deepEqual(saved.execution, { interpreter: "zsh", launchDialect: "posix", login: false });
+  form = await open();
+  for (const key of ["interpreter", "launchDialect", "login"]) {
+    const field = form.locator(`[name="${key}"]`);
+    if (await field.isEnabled()) await field.selectOption("");
+  }
+  await form.getByRole("button", { name: "保存", exact: true }).click();
+  await page.locator("dialog[open]").waitFor({ state: "hidden" });
+  assert.equal(saved.execution, null);
+};
+cases.execution_probe_preview_save = async ({ page, state }) => {
+  populate(state);
+  let writes = 0, probed;
+  state.routes.set("/api/v1/nodes/execution-probe", route => {
+    probed = route.request().postDataJSON();
+    assert.equal(route.request().headers()["if-match"], '"0"');
+    return json(route, { availableInterpreters: ["sh", "zsh"], detectedDialect: "posix", suggestedConfig: { interpreter: "zsh", launchDialect: "posix", login: false } });
+  });
+  state.routes.set("/api/v1/nodes/a", route => {
+    writes++;
+    const saved = route.request().postDataJSON();
+    assert.deepEqual(saved.execution, { interpreter: "zsh", launchDialect: "posix", login: false });
+    Object.assign(state.inventory.nodes[0], saved);
+    return json(route, { revision: ++state.inventory.revision, id: "a" });
+  });
+  await page.goto(origin + "/#nodes");
+  await page.locator('[data-action="edit"][data-kind="nodes"][data-id="a"]').first().click();
+  const form = page.locator("dialog[open] form");
+  await form.getByRole("button", { name: "自动探测", exact: true }).click();
+  await form.locator("#execution-probe-result").filter({ hasText: "已选中推荐配置" }).waitFor();
+  assert.deepEqual(probed, { nodeID: "a", hostID: "host", identityID: "identity", jumpIDs: [] });
+  assert.equal(writes, 0);
+  assert.equal(await form.locator('[name="interpreter"]').inputValue(), "zsh");
+  assert.deepEqual(await form.locator('[name="interpreter"] option').evaluateAll(options => options.map(x => x.value)), ["server", "sh", "zsh"]);
+  assert.equal(await form.locator('[name="login"]').inputValue(), "false");
+  await form.getByRole("button", { name: "保存", exact: true }).click();
+  await page.locator("dialog[open]").waitFor({ state: "hidden" });
+  assert.equal(writes, 1);
+};
+cases.execution_probe_failure = async ({ page, state }) => {
+  populate(state);
+  state.inventory.nodes[0].execution = { interpreter: "zsh", launchDialect: "posix", login: false };
+  state.routes.set("/api/v1/nodes/execution-probe", route => json(route, { message: "无法探测远端 Shell" }, 502));
+  await page.goto(origin + "/#nodes");
+  await page.locator('[data-action="edit"][data-kind="nodes"][data-id="a"]').first().click();
+  const form = page.locator("dialog[open] form");
+  await form.getByRole("button", { name: "自动探测", exact: true }).click();
+  await form.locator("#execution-probe-result").filter({ hasText: "无法探测" }).waitFor();
+  assert.equal(await form.locator('[name="interpreter"]').inputValue(), "zsh");
+  assert.equal(await form.getByRole("button", { name: "保存", exact: true }).isEnabled(), true);
+};
+cases.execution_probe_changed_draft = async ({ page, state }) => {
+  populate(state);
+  state.inventory.identities.push({ id: "other", name: "other", user: "other" });
+  const started = barrier(), release = barrier();
+  state.routes.set("/api/v1/nodes/execution-probe", async route => {
+    started.release();
+    await bounded(release.ready);
+    try { await json(route, { availableInterpreters: ["sh"], suggestedConfig: { interpreter: "sh", launchDialect: "posix" } }); }
+    catch { /* An edited draft aborts the request. */ }
+  });
+  await page.goto(origin + "/#nodes");
+  await page.locator('[data-action="edit"][data-kind="nodes"][data-id="a"]').first().click();
+  const form = page.locator("dialog[open] form");
+  await form.getByRole("button", { name: "自动探测", exact: true }).click();
+  await bounded(started.ready);
+  assert.equal(await form.getByRole("button", { name: "保存", exact: true }).isDisabled(), true);
+  await form.locator('[name="identityID"]').selectOption("other");
+  release.release();
+  await form.locator("#execution-probe-result").filter({ hasText: "连接配置已变化" }).waitFor();
+  assert.equal(await form.locator('[name="interpreter"]').inputValue(), "");
+  assert.equal(await form.getByRole("button", { name: "保存", exact: true }).isEnabled(), true);
+};
+for (const fails of [false, true]) {
+  cases[`node_save_lock_${fails ? "failure" : "success"}`] = async ({ page, state }) => {
+    populate(state);
+    state.inventory.nodes[0].execution = { interpreter: "zsh", launchDialect: "posix", login: false };
+    state.inventory.identities.push({ id: "other", name: "other", user: "other" });
+    const started = barrier(), release = barrier();
+    let writes = 0, probes = 0;
+    state.routes.set("/api/v1/nodes/execution-probe", route => { probes++; return json(route, {}); });
+    state.routes.set("/api/v1/nodes/a", async route => {
+      writes++;
+      assert.equal(route.request().postDataJSON().execution.login, false);
+      started.release();
+      await bounded(release.ready);
+      return json(route, fails ? { message: "保存失败，请重试" } : { revision: 1, id: "a" }, fails ? 500 : 200);
+    });
+    await page.goto(origin + "/#nodes");
+    await page.locator('[data-action="edit"][data-kind="nodes"][data-id="a"]').first().click();
+    const form = page.locator("dialog[open] form"), save = form.getByRole("button", { name: "保存", exact: true });
+    await save.click();
+    await bounded(started.ready);
+    try {
+      for (const field of ["hostID", "identityID", "interpreter", "launchDialect", "login"])
+        assert.equal(await form.locator(`[name="${field}"]`).isDisabled(), true);
+      assert.equal(await form.getByRole("button", { name: "自动探测", exact: true }).isDisabled(), true);
+      // A delayed change event must not unlock a pending save or admit a second submission.
+      await form.evaluate(node => {
+        node.elements.identityID.value = "other";
+        node.elements.identityID.dispatchEvent(new Event("change", { bubbles: true }));
+        node.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+        node.querySelector("#probe-execution").click();
+      });
+      assert.equal(await save.isDisabled(), true);
+      assert.equal(writes, 1);
+      assert.equal(probes, 0);
+    } finally { release.release(); }
+    if (fails) {
+      await form.locator(".form-error").filter({ hasText: "保存失败" }).waitFor();
+      assert.equal(await save.isEnabled(), true);
+      assert.equal(await form.locator('[name="identityID"]').isEnabled(), true);
+      assert.equal(await form.locator('[name="login"]').isEnabled(), true);
+      assert.equal(await form.getByRole("button", { name: "自动探测", exact: true }).isEnabled(), true);
+    } else await page.locator("dialog[open]").waitFor({ state: "hidden" });
+    assert.equal(writes, 1);
+  };
+}
+cases.execution_probe_switch_server = async ({ page, state }) => {
+  populate(state);
+  state.routes.set("/api/v1/nodes/execution-probe", route => json(route, {
+    availableInterpreters: ["sh", "zsh"], suggestedConfig: { interpreter: "zsh", launchDialect: "posix", login: false },
+  }));
+  let saved;
+  state.routes.set("/api/v1/nodes/a", route => {
+    saved = route.request().postDataJSON();
+    return json(route, { revision: 1, id: "a" });
+  });
+  await page.goto(origin + "/#nodes");
+  await page.locator('[data-action="edit"][data-kind="nodes"][data-id="a"]').first().click();
+  const form = page.locator("dialog[open] form");
+  await form.getByRole("button", { name: "自动探测", exact: true }).click();
+  await form.locator("#execution-probe-result").filter({ hasText: "已选中推荐配置" }).waitFor();
+  await form.locator('[name="interpreter"]').selectOption("server");
+  assert.equal(await form.locator('[name="login"]').inputValue(), "");
+  assert.equal(await form.locator('[name="login"]').isDisabled(), true);
+  await form.getByRole("button", { name: "保存", exact: true }).click();
+  await page.locator("dialog[open]").waitFor({ state: "hidden" });
+  assert.deepEqual(saved.execution, { interpreter: "server", launchDialect: "posix" });
+};
+cases.execution_interpreter_compatibility = async ({ page, state }) => {
+  populate(state);
+  state.inventory.nodes[0].execution = { interpreter: "zsh", launchDialect: "posix", login: true };
+  await page.goto(origin + "/#nodes");
+  await page.locator('[data-action="edit"][data-kind="nodes"][data-id="a"]').first().click();
+  const form = page.locator("dialog[open] form"), interpreter = form.locator('[name="interpreter"]');
+  await interpreter.selectOption("sh");
+  assert.equal(await form.locator('[name="login"]').inputValue(), "");
+  assert.equal(await form.locator('[name="login"] option[value="true"]').evaluate(option => option.disabled), true);
+  await interpreter.selectOption("powershell");
+  assert.equal(await form.locator('[name="launchDialect"]').inputValue(), "");
+  assert.equal(await form.locator('[name="login"]').isDisabled(), true);
+  await form.locator('[name="launchDialect"]').selectOption("cmd");
+  await interpreter.selectOption("pwsh");
+  assert.equal(await form.locator('[name="launchDialect"]').inputValue(), "cmd");
+  await interpreter.selectOption("cmd");
+  assert.equal(await form.locator('[name="launchDialect"]').inputValue(), "cmd");
+  await interpreter.selectOption("bash");
+  assert.equal(await form.locator('[name="launchDialect"]').inputValue(), "");
+  assert.equal(await form.locator('[name="login"]').isEnabled(), true);
+};
 const failures = [];
 try {
   const selected = new Set(process.argv.slice(2));

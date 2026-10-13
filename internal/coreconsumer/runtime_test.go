@@ -58,7 +58,7 @@ func TestCoreRuntimeHTTPAndSSHContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	view := ports.OperationSnapshot{DomainID: "consumer", Revision: "1", PolicyRevision: "1", Policy: policy.Config{Enabled: false}, Targets: map[string]ports.Target{
-		"compat-node": {Info: ports.NodeInfo{ID: "compat-node", Tags: []string{"compatibility"}}, Version: "1", Plan: ssh.ConnectionPlan{Scope: "consumer", Hops: []ssh.ConnectionConfig{{NodeID: "compat-node", Address: host, Port: port, User: "fixture", AuthType: "password", AuthUpdateToken: "1", TrustVersion: "1"}}}},
+		"compat-node": {Execution: &ssh.ExecutionConfig{Interpreter: ssh.InterpreterServer}, ExecutionVersion: ports.ExecutionVersion(&ssh.ExecutionConfig{Interpreter: ssh.InterpreterServer}), Info: ports.NodeInfo{ID: "compat-node", Tags: []string{"compatibility"}}, Version: "1", Plan: ssh.ConnectionPlan{Scope: "consumer", Hops: []ssh.ConnectionConfig{{NodeID: "compat-node", Address: host, Port: port, User: "fixture", AuthType: "password", AuthUpdateToken: "1", TrustVersion: "1"}}}},
 	}}
 	coordinator, err := state.New(view, state.Options{})
 	if err != nil {

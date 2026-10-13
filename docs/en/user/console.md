@@ -53,3 +53,17 @@ Use a separate token for each client. Do not use the administrator password, set
 First list nodes, then choose a node for commands. Available operations include command execution, text files, directory/file management, uploads and downloads. Use the tools shown by the client.
 
 Local transfer files belong to the client device. Archive directories before transferring them. The single-file limit is 10 GiB. After downloading, confirm that the client saved the file. If a task reports an unknown result after interruption or restart, follow [maintenance](maintenance.md#unknown-file-task-results) instead of blindly repeating an overwrite.
+
+## Command execution environment
+
+In the node editor, click **Auto probe** to get recommended settings, or set the interpreter, launch shell, and login mode manually. Supported interpreters are `server`, `bash`, `sh`, `zsh`, `fish`, `powershell`, `pwsh`, and `cmd`. Automatic probing runs fixed, bounded diagnostic commands when a command needs the environment; it does not save settings. Connection tests still check SSH login only. Explicit `server` passes the original command to the server. Privilege execution requires a supported Bash, sh, zsh, or fish environment.
+
+MCP `xops_ssh_run` accepts an optional `execution` override using `interpreter`, `launchDialect`, and `login`. Responses include `outcome` (`not_started`, `completed`, or `unknown`), optional `exitCode`/`signal`, `planDigest`, and `truncated`. A nonzero exit status is a failed command; do not automatically replay an `unknown` result. File copy and removal use SFTP, including on Windows targets, without requiring a POSIX shell.
+
+When upgrading, stop the service, back up the deployment and run `migrate` with the new executable before restarting. Existing nodes start with automatic probing. If an SSH endpoint restricts diagnostic commands, set its execution interpreter to `server` to preserve passthrough.
+
+### Probe and save Shell settings
+
+In the node editor, select a host, login identity and any jumps, then click **Auto probe**. The host must already have a pinned public key and the identity must have a login credential. Probing works for new and disabled target nodes; transit nodes must be enabled. The result lists installed Shells and selects the recommended interpreter, launch shell and login mode. Review or adjust the choices and click **Save** to persist them. Closing the editor discards the recommendation. Probe errors preserve your current choices; changing connection settings cancels the old result and requires another probe.
+
+While a node is being saved, its fields and probe button are locked to prevent duplicate submissions; failed saves restore editing. Changing the interpreter clears incompatible launch/login values. Interpreters that require inherited login mode disable the login selector.

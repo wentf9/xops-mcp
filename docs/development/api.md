@@ -29,3 +29,9 @@
 标签写入使用 `{"name":"production"}`，创建返回 `id`；修改和删除使用 `/tags/{id}`。节点 DTO 使用 `tagIDs` 数组关联标签主键，不再接受按名称写入的 `tags` 字段。库存的标签记录包含 `id`、`name` 和关联节点 `count`，未使用标签也会返回。
 
 `/audit` 支持 `limit`（1–100，默认 50）、`before`、`nodeID`、`outcome`、`operationID`。管理 API 不启用跨域 CORS，写请求要求 `Origin` 与当前允许的访问来源一致；不根据未经验证的 Forwarded 头建立信任。登录有并发及来源速率限制。
+
+## 节点执行配置
+
+节点创建、修改 DTO 与库存响应支持可选的 `execution: {"interpreter":"zsh","launchDialect":"posix","login":false}`。省略或 null 启用运行时探测；login 区分省略、true、false。更新使用库存 ETag 并替换节点配置，执行配置解码或校验失败返回 400。执行配置参与操作绑定，并为已准入操作保留副本。数据库迁移为 SQLite v9 / PostgreSQL v6；旧节点默认 null。
+
+`POST /nodes/execution-probe` 接收 `{ "nodeID": "可选的已有节点ID", "hostID": "...", "identityID": "...", "jumpIDs": [] }`，携带库存 `If-Match`。返回 core `ProbeResult`（`availableInterpreters`、`suggestedConfig`、`detectedDialect` 等），不改变库存或 revision。使用当前表单的连接引用、固定信任和版本化凭据；显式管理员检查允许新建/停用目标，拒绝停用跳板。仅运行 core 固定诊断，限时 25 秒，共用四个探测并发额度，记录意图与结果审计。网络操作前后检查 revision，过期结果返回 412；缺少信任/凭据或无效链返回 422，连接/探测失败返回 502，超时返回 408。用户通过正常节点创建/更新接口保存选中的配置。

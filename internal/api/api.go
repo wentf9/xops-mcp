@@ -22,6 +22,7 @@ import (
 	"github.com/wentf9/xops-cli/core/mcp/guardrail"
 	"github.com/wentf9/xops-cli/core/mcp/ports"
 	"github.com/wentf9/xops-cli/core/mcp/state"
+	"github.com/wentf9/xops-cli/core/ssh"
 	"github.com/wentf9/xops-mcp/internal/adminauth"
 	"github.com/wentf9/xops-mcp/internal/config"
 	"github.com/wentf9/xops-mcp/internal/mcpauth"
@@ -37,6 +38,7 @@ type Store interface {
 }
 type Probes interface {
 	TestConnection(context.Context, ports.Permit, string) error
+	ProbeExecution(context.Context, ssh.ConnectionPlan, []storage.Source) (*ssh.ProbeResult, error)
 }
 type Options struct {
 	MCPTokens     *mcpauth.Manager
@@ -164,6 +166,7 @@ func (s *Server) Handler(assets http.Handler) http.Handler {
 	mux.Handle("POST /api/v1/hosts/{id}/key-preview", s.authorize(http.HandlerFunc(s.previewHostKey)))
 	mux.Handle("POST /api/v1/hosts/{id}/trust", s.authorize(http.HandlerFunc(s.trustHost)))
 	mux.Handle("DELETE /api/v1/hosts/{id}/trust", s.authorize(http.HandlerFunc(s.trustHost)))
+	mux.Handle("POST /api/v1/nodes/execution-probe", s.authorize(http.HandlerFunc(s.probeExecution)))
 	mux.Handle("POST /api/v1/nodes/{id}/test", s.authorize(http.HandlerFunc(s.testNode)))
 	mux.Handle("GET /api/v1/audit", s.authorize(http.HandlerFunc(s.audit)))
 	mux.Handle("GET /api/v1/operations", s.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

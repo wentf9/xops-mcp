@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wentf9/xops-cli/core/ssh"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wentf9/xops-cli/core/testutil/sshfixture"
 	"github.com/wentf9/xops-mcp/internal/service"
@@ -22,7 +24,7 @@ func TestResourceNamesAndAliasesRejectInvalidInput(t *testing.T) {
 	host := p.save("hosts", service.HostInput{Name: "主机_01", Address: "127.0.0.1", Port: 22})
 	credential := p.save("credentials", service.CredentialInput{Name: "ключ-01", Kind: "password", Secret: &service.MaterialInput{Password: "synthetic-password"}})
 	identity := p.save("identities", service.IdentityInput{Name: "身份_01", User: "fixture", CredentialID: credential})
-	node := p.save("nodes", service.NodeInput{Name: "节点-01", HostID: host, IdentityID: identity, Disabled: true, Aliases: []string{"运维_生产", "e\u0301cole"}})
+	node := p.save("nodes", service.NodeInput{Execution: &ssh.ExecutionConfig{Interpreter: ssh.InterpreterServer}, Name: "节点-01", HostID: host, IdentityID: identity, Disabled: true, Aliases: []string{"运维_生产", "e\u0301cole"}})
 	tag := p.save("tags", service.TagInput{Name: "हिन्दी"})
 	for _, resource := range []struct {
 		kind, id string
@@ -52,7 +54,7 @@ func TestResourceNamesAndAliasesRejectInvalidInput(t *testing.T) {
 	}
 	before := p.etag
 	for _, value := range []string{"", " leading", "trailing ", "inner space", "ops,prod", "a.b", "a\nb", "a\tb", "node🙂", "a\u200d", "\u0301a"} {
-		input := service.NodeInput{Name: "更新_nodes-α", HostID: host, IdentityID: identity, Disabled: true, Aliases: []string{value}}
+		input := service.NodeInput{Execution: &ssh.ExecutionConfig{Interpreter: ssh.InterpreterServer}, Name: "更新_nodes-α", HostID: host, IdentityID: identity, Disabled: true, Aliases: []string{value}}
 		p.request("PUT", "/api/v1/nodes/"+node, input, 422, nil)
 		input.Name = "待创建节点"
 		p.request("POST", "/api/v1/nodes", input, 422, nil)
@@ -84,7 +86,7 @@ func TestUnicodeNamesAndAliasesReachSSH(t *testing.T) {
 	}
 	p.request("GET", "/api/v1/inventory", nil, 200, nil)
 	node := v.Nodes[report.NodeIDs["peer"]]
-	edit := service.NodeInput{Name: "服务器_01", HostID: node.HostID, IdentityID: node.IdentityID, JumpIDs: node.JumpIDs, Aliases: slices.Clone(node.Aliases), TagIDs: node.TagIDs, Disabled: node.Disabled, SudoMode: node.SudoMode, PrivilegeCredentialID: node.PrivilegeCredentialID}
+	edit := service.NodeInput{Execution: &ssh.ExecutionConfig{Interpreter: ssh.InterpreterServer}, Name: "服务器_01", HostID: node.HostID, IdentityID: node.IdentityID, JumpIDs: node.JumpIDs, Aliases: slices.Clone(node.Aliases), TagIDs: node.TagIDs, Disabled: node.Disabled, SudoMode: node.SudoMode, PrivilegeCredentialID: node.PrivilegeCredentialID}
 	p.request("PUT", "/api/v1/nodes/"+node.ID, edit, 200, nil)
 	actual, err := p.app.Host.Store.Load(ctx)
 	if err != nil {

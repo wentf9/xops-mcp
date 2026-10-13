@@ -50,7 +50,7 @@ Add credentials and verify the host key in the console before enabling the node.
 | --- | --- |
 | `hosts.<name>` | `address`, `port` (default 22), `host_key` |
 | `identities.<name>` | `user`, `credential` (credential name) |
-| `nodes.<name>` | `host`, `identity`, `aliases`, `tags`, `proxy_jump`, `disabled`, `sudo_mode`, `privilege_credential` |
+| `nodes.<name>` | `host`, `identity`, `aliases`, `tags`, `proxy_jump`, `disabled`, `sudo_mode`, `privilege_credential`, `execution` |
 | `tags` | Tag names, including unassigned tags |
 | `credentials.<name>` | `kind: password` with `password`; or `kind: key`, `private_key` and optional `passphrase` |
 | `policy` | Operation policy settings |
@@ -86,3 +86,7 @@ xops-mcp import --config server.yaml --format xops-cli --file exported-config.ya
 Hosts, identities, nodes, aliases, tags, jumps and policies are supported. The source file is unchanged, and imported nodes remain disabled. Password stores, private-key paths and SSH agents are not automatically copied. Add credentials and verify host keys before enabling nodes.
 
 Passwords written directly in older configuration formats require `--include-secrets`. Automatic elevation becomes no elevation with a warning. After reviewing the preview, add `--apply --expected-revision` to apply it. A successful preview alone does not make nodes ready for remote work.
+
+## Command execution settings
+
+Server inventory nodes accept optional `execution` settings: `interpreter`, `launch_dialect`, and `login` (boolean; omitted inherits the default). CLI imports support global and per-node `execution`; the resolved settings are saved on each imported node. `login: false` is preserved. Invalid interpreter/dialect combinations are rejected. Missing settings enable automatic probing when executing a command; explicit `interpreter: server` preserves the original server command.

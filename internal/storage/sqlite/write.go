@@ -124,7 +124,11 @@ func saveInventory(ctx context.Context, tx *sql.Tx, expected uint64, v storage.I
 		}
 	}
 	for _, n := range v.Nodes {
-		if _, err := tx.ExecContext(ctx, "INSERT INTO nodes VALUES(?,?,?,?,?,?,?,?)", n.ID, n.Name, n.HostID, n.IdentityID, nil, n.SudoMode, nullable(n.PrivilegeCredentialID), n.Disabled); err != nil {
+		execution, err := json.Marshal(n.Execution)
+		if err != nil {
+			return fmt.Errorf("encode node execution: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO nodes(id,name,host_id,identity_id,jump_id,sudo_mode,privilege_credential_id,disabled,execution) VALUES(?,?,?,?,?,?,?,?,?)", n.ID, n.Name, n.HostID, n.IdentityID, nil, n.SudoMode, nullable(n.PrivilegeCredentialID), n.Disabled, string(execution)); err != nil {
 			return err
 		}
 		for position, jump := range n.JumpIDs {

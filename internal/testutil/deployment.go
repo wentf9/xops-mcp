@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wentf9/xops-cli/core/ssh"
+
 	"github.com/wentf9/xops-mcp/internal/config"
 	"github.com/wentf9/xops-mcp/internal/importer"
 	"github.com/wentf9/xops-mcp/internal/secure"
@@ -105,7 +107,7 @@ func HostKey(t *testing.T) string {
 }
 func Document(t *testing.T) importer.Document {
 	t.Helper()
-	return importer.Document{Version: 1, Hosts: map[string]importer.Host{"peer": {Address: "127.0.0.1", Port: 22, HostKey: HostKey(t)}}, Identities: map[string]importer.Identity{"login": {User: "fixture", Credential: "login"}}, Credentials: map[string]importer.Credential{"login": {Kind: "password", Password: "synthetic-credential-unique-78261"}}, Nodes: map[string]importer.Node{"peer": {Host: "peer", Identity: "login", Aliases: []string{"test"}, Tags: []string{"fixture"}}}}
+	return importer.Document{Version: 1, Hosts: map[string]importer.Host{"peer": {Address: "127.0.0.1", Port: 22, HostKey: HostKey(t)}}, Identities: map[string]importer.Identity{"login": {User: "fixture", Credential: "login"}}, Credentials: map[string]importer.Credential{"login": {Kind: "password", Password: "synthetic-credential-unique-78261"}}, Nodes: map[string]importer.Node{"peer": {Execution: &ssh.ExecutionConfig{Interpreter: ssh.InterpreterServer}, Host: "peer", Identity: "login", Aliases: []string{"test"}, Tags: []string{"fixture"}}}}
 }
 func Plan(t *testing.T, s storage.Repository, vault *secure.Vault, doc importer.Document) (storage.Inventory, importer.Report) {
 	t.Helper()

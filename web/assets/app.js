@@ -116,7 +116,7 @@ function toast(text, error = false) {
     $("#notices").firstElementChild.remove();
   setTimeout(() => e.remove(), 6000);
 }
-async function api(path, { method = "GET", body, etag } = {}) {
+async function api(path, { method = "GET", body, etag, signal } = {}) {
   const token = accessToken, generation = authGeneration;
   if (body !== undefined && ["/auth/login", "/auth/setup", "/auth/password"].includes(path))
     body = await encryptRequest(apiRoot, path.split("/").pop(), body, token);
@@ -129,6 +129,7 @@ async function api(path, { method = "GET", body, etag } = {}) {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
     credentials: "omit",
     cache: "no-store",
   });
@@ -629,27 +630,147 @@ function modal(title, html, submit, label = "保存") {
   dialog.querySelectorAll("[data-close]").forEach((b) => (b.onclick = close));
   form.onsubmit = async (e) => {
     e.preventDefault();
+    if (form.dataset.submitting) return;
     namingFields(form).forEach(validateNamingField);
     if (!form.reportValidity()) return;
     const button = $("[type=submit]", form);
+    const data = new FormData(form);
+    const locked = form.dataset.lockOnSubmit
+      ? [...form.querySelectorAll("input, select, textarea, button:not([data-close])")].map(control => [control, control.disabled])
+      : [];
+    form.dataset.submitting = "true";
+    for (const [control] of locked) control.disabled = true;
     button.disabled = true;
     $(".form-error", form).textContent = "";
     try {
-      await submit(new FormData(form), form);
+      await submit(data, form);
       close();
     } catch (error) {
       if (ownsDialog(form)) {
         $(".form-error", form).textContent =
           error.message +
           (error.status === 412 ? " 请关闭窗口，刷新后重新编辑。" : "");
+        for (const [control, disabled] of locked) control.disabled = disabled;
         button.disabled = false;
       } else toast(error.message, true);
+    } finally {
+      delete form.dataset.submitting;
     }
   };
   return form;
 }
 function confirm(title, text, submit) {
   modal(title, `<p class="confirm-copy">${esc(text)}</p>`, submit, "确认");
+}
+function executionFields(execution) {
+  const select = (label, name, values, current) => `<label>${label}<select name="${name}">${values.map(([value, text]) => `<option value="${value}" ${value === (current || "") ? "selected" : ""}>${text}</option>`).join("")}</select></label>`;
+  return '<fieldset><legend>命令执行环境</legend><button type="button" id="probe-execution">自动探测</button><p id="execution-probe-result" class="hint" role="status" aria-live="polite"></p>' +
+    select("解释器", "interpreter", [["", "未指定"], ...["server", "bash", "sh", "zsh", "fish", "powershell", "pwsh", "cmd"].map(x => [x, x])], execution?.interpreter) +
+    select("启动 Shell", "launchDialect", [["", "默认"], ...["posix", "fish", "powershell", "cmd", "unknown"].map(x => [x, x])], execution?.launchDialect) +
+    select("登录模式", "login", [["", "默认"], ["true", "登录 Shell"], ["false", "非登录 Shell"]], execution?.login == null ? "" : String(execution.login)) +
+    '<p class="hint">点击自动探测，获取远端支持的 Shell 并选中推荐配置；点击保存后生效。server 保留服务端原命令。</p></fieldset>';
+}
+function updateExecutionFields(form) {
+  const interpreter = form.elements.interpreter.value;
+  const dialects = {
+    bash: ["posix", "fish"], sh: ["posix", "fish"], zsh: ["posix", "fish"], fish: ["posix", "fish"],
+    powershell: ["cmd", "powershell"], pwsh: ["cmd", "powershell", "posix", "fish"], cmd: ["cmd"],
+  }[interpreter];
+  const launch = form.elements.launchDialect, login = form.elements.login;
+  for (const option of launch.options) option.disabled = !!(option.value && dialects && !dialects.includes(option.value));
+  if (launch.selectedOptions[0]?.disabled) launch.value = "";
+  const inheritedLogin = ["", "server", "powershell", "pwsh", "cmd"].includes(interpreter);
+  if (inheritedLogin || (interpreter === "sh" && login.value === "true")) login.value = "";
+  login.disabled = inheritedLogin;
+  for (const option of login.options) option.disabled = !!option.value && (inheritedLogin || (interpreter === "sh" && option.value === "true"));
+}
+function bindExecutionProbe(form, id, base) {
+  form.dataset.lockOnSubmit = "true";
+  updateExecutionFields(form);
+  const button = $("#probe-execution", form), status = $("#execution-probe-result", form);
+  const save = $('[type="submit"]', form), interpreter = form.elements.interpreter;
+  const allOptions = interpreter.innerHTML;
+  let controller, sequence = 0, applied = false;
+  const connection = () => ({ nodeID: id || "", hostID: form.elements.hostID.value,
+    identityID: form.elements.identityID.value,
+    jumpIDs: [...form.querySelectorAll('[name="jumpID"]')].map(x => x.value).filter(Boolean) });
+  const cancel = () => {
+    sequence++;
+    controller?.abort();
+    controller = null;
+    button.disabled = !!form.dataset.submitting;
+    button.textContent = "自动探测";
+    save.disabled = !!form.dataset.submitting;
+  };
+  dialog.addEventListener("close", cancel, { once: true });
+  form.addEventListener("submit", event => {
+    if (controller) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      status.textContent = "正在探测，请等待结果后保存。";
+    }
+  }, true);
+  form.addEventListener("change", event => {
+    if (event.target.name === "interpreter") updateExecutionFields(form);
+    if (["hostID", "identityID", "jumpID"].includes(event.target.name)) {
+      cancel();
+      if (applied) {
+        interpreter.innerHTML = allOptions;
+        for (const key of ["interpreter", "launchDialect", "login"]) form.elements[key].value = "";
+        applied = false;
+        updateExecutionFields(form);
+      }
+      status.textContent = "连接配置已变化，请重新探测。";
+    } else if (["interpreter", "launchDialect", "login"].includes(event.target.name) && controller) {
+      cancel();
+      status.textContent = "已取消探测，保留手动选择。";
+    }
+  });
+  $("#jumps", form).addEventListener("click", event => {
+    if (event.target.matches("[data-remove-jump]")) form.elements.hostID.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  button.onclick = async () => {
+    if (form.dataset.submitting) return;
+    const body = connection(), captured = JSON.stringify(body), generation = authGeneration;
+    if (!body.hostID || !body.identityID) { status.textContent = "请先选择主机和登录身份，并配置登录凭据及主机公钥。"; return; }
+    cancel();
+    const request = sequence;
+    controller = new AbortController();
+    button.disabled = true;
+    button.textContent = "正在探测…";
+    save.disabled = true;
+    status.textContent = "正在连接远端并探测支持的 Shell…";
+    try {
+      const { data } = await api("/nodes/execution-probe", { method: "POST", body, etag: base, signal: controller.signal });
+      if (!ownsDialog(form) || request !== sequence || generation !== authGeneration || captured !== JSON.stringify(connection())) return;
+      const suggested = data.suggestedConfig;
+      if (!suggested?.interpreter || !suggested.launchDialect || !Array.isArray(data.availableInterpreters)) throw new Error("探测结果不完整，请重试");
+      const supported = [...new Set(["server", ...data.availableInterpreters, suggested.interpreter])];
+      interpreter.innerHTML = supported.map(value => `<option value="${esc(value)}">${esc(value)}</option>`).join("");
+      interpreter.value = suggested.interpreter;
+      form.elements.launchDialect.value = suggested.launchDialect;
+      form.elements.login.value = suggested.login == null ? "" : String(suggested.login);
+      updateExecutionFields(form);
+      applied = true;
+      status.textContent = `支持的 Shell：${data.availableInterpreters.join("、") || "server"}。已选中推荐配置 ${suggested.interpreter} / ${suggested.launchDialect}，点击保存后生效。`;
+    } catch (error) {
+      if (ownsDialog(form) && request === sequence && error.name !== "AbortError")
+        status.textContent = error.message + (error.status === 412 ? " 请关闭窗口，刷新后重新编辑。" : "");
+    } finally {
+      if (ownsDialog(form) && request === sequence) {
+        controller = null;
+        button.disabled = !!form.dataset.submitting;
+        button.textContent = "自动探测";
+        save.disabled = !!form.dataset.submitting;
+      }
+    }
+  };
+}
+function executionInput(data) {
+  const execution = {};
+  for (const key of ["interpreter", "launchDialect"]) if (data.get(key)) execution[key] = data.get(key);
+  if (data.get("login")) execution.login = data.get("login") === "true";
+  return Object.keys(execution).length ? execution : null;
 }
 function edit(kind, id) {
   const item = id ? find(kind, id) : {},
@@ -687,6 +808,7 @@ function edit(kind, id) {
       S.v.credentials.filter((c) => c.kind === "password"),
       item.privilegeCredentialID,
     )}</div><label class="check"><input type="checkbox" name="enabled" ${id && !item.disabled ? "checked" : ""}>启用节点</label><p class="hint">启用前需配置凭据和主机公钥。未启用的跳板会阻止下游节点操作。</p>`;
+  if (kind === "nodes") html += executionFields(item.execution);
   if (kind === "credentials")
     html += `<label>类型<select aria-label="类型" name="kind"><option value="password" ${item.kind !== "key" ? "selected" : ""}>密码</option><option value="key" ${item.kind === "key" ? "selected" : ""}>SSH 私钥</option></select></label><div id="secret-fields"></div><p class="hint">${id ? "留空保留已有材料；填写后会创建新版本。" : "凭据加密保存，创建后不会回显。"}</p>`;
   const form = modal(`${id ? "编辑" : "新建"}${label}`, html, async (data) => {
@@ -708,6 +830,7 @@ function edit(kind, id) {
         disabled: !data.has("enabled"),
         sudoMode: x.sudoMode,
         privilegeCredentialID: x.privilegeCredentialID,
+        execution: executionInput(data),
       };
     if (kind === "credentials") {
       body = { name: x.name, kind: x.kind };
@@ -750,6 +873,7 @@ function edit(kind, id) {
     form.elements.kind.onchange = fields;
   }
   if (kind === "nodes") {
+    bindExecutionProbe(form, id, base);
     $("#add-jump", form).onclick = () =>
       $("#jumps", form).insertAdjacentHTML("beforeend", jumpRow(""));
     $("#jumps", form).onclick = (e) => {

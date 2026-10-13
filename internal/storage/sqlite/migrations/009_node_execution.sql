@@ -1,0 +1,1 @@
+ALTER TABLE nodes ADD COLUMN execution TEXT NOT NULL DEFAULT 'null';

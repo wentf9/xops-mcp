@@ -114,6 +114,9 @@ func Snapshot(v storage.Inventory) (ports.OperationSnapshot, []storage.Source, e
 		if id != n.ID || !validText(id) || v.Deleted[id] {
 			return view, nil, errors.New("invalid or deleted node identity")
 		}
+		if err := n.Execution.Validate(); err != nil {
+			return view, nil, fmt.Errorf("node %q execution: %w", n.Name, err)
+		}
 		h, hOK := v.Hosts[n.HostID]
 		i, iOK := v.Identities[n.IdentityID]
 		if !hOK || !iOK {
@@ -198,7 +201,7 @@ func Snapshot(v storage.Inventory) (ports.OperationSnapshot, []storage.Source, e
 		if len(tags) == 0 {
 			tags = nil
 		}
-		view.Targets[id] = ports.Target{Info: ports.NodeInfo{ID: id, Alias: aliases, Tags: tags, Address: net.JoinHostPort(h.Address, strconv.Itoa(h.Port)), User: i.User, AuthType: authType, ProxyJump: hop.ProxyJump}, Disabled: n.Disabled, Version: "1"}
+		view.Targets[id] = ports.Target{Info: ports.NodeInfo{ID: id, Alias: aliases, Tags: tags, Address: net.JoinHostPort(h.Address, strconv.Itoa(h.Port)), User: i.User, AuthType: authType, ProxyJump: hop.ProxyJump}, Disabled: n.Disabled, Version: "1", Execution: n.Execution.Clone(), ExecutionVersion: ports.ExecutionVersion(n.Execution)}
 	}
 	for id, target := range view.Targets {
 		// CapturePlan resolves only this bounded, immutable in-memory map. It

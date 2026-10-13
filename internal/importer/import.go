@@ -15,6 +15,7 @@ import (
 	"strconv"
 
 	"github.com/wentf9/xops-cli/core/mcp/policy"
+	"github.com/wentf9/xops-cli/core/ssh"
 	"github.com/wentf9/xops-mcp/internal/adapters/xops"
 	"github.com/wentf9/xops-mcp/internal/secure"
 	"github.com/wentf9/xops-mcp/internal/storage"
@@ -41,14 +42,15 @@ type Identity struct {
 	Credential string `yaml:"credential"`
 }
 type Node struct {
-	Host                string   `yaml:"host"`
-	Identity            string   `yaml:"identity"`
-	ProxyJump           string   `yaml:"proxy_jump"`
-	Aliases             []string `yaml:"aliases"`
-	Tags                []string `yaml:"tags"`
-	Disabled            bool     `yaml:"disabled"`
-	SudoMode            string   `yaml:"sudo_mode"`
-	PrivilegeCredential string   `yaml:"privilege_credential"`
+	Execution           *ssh.ExecutionConfig `yaml:"execution,omitempty"`
+	Host                string               `yaml:"host"`
+	Identity            string               `yaml:"identity"`
+	ProxyJump           string               `yaml:"proxy_jump"`
+	Aliases             []string             `yaml:"aliases"`
+	Tags                []string             `yaml:"tags"`
+	Disabled            bool                 `yaml:"disabled"`
+	SudoMode            string               `yaml:"sudo_mode"`
+	PrivilegeCredential string               `yaml:"privilege_credential"`
 }
 type Credential struct {
 	Kind       string `yaml:"kind"`
@@ -240,7 +242,7 @@ func Plan(base storage.Inventory, doc Document, vault *secure.Vault, options Opt
 		}
 		slices.Sort(aliases)
 		slices.Sort(tagIDs)
-		n := storage.Node{ID: id, Name: name, HostID: hosts[input.Host], IdentityID: identities[input.Identity], JumpIDs: jumps, Aliases: slices.Compact(aliases), TagIDs: slices.Compact(tagIDs), Disabled: input.Disabled, SudoMode: input.SudoMode, PrivilegeCredentialID: credentials[input.PrivilegeCredential]}
+		n := storage.Node{ID: id, Name: name, HostID: hosts[input.Host], IdentityID: identities[input.Identity], JumpIDs: jumps, Aliases: slices.Compact(aliases), TagIDs: slices.Compact(tagIDs), Disabled: input.Disabled, SudoMode: input.SudoMode, PrivilegeCredentialID: credentials[input.PrivilegeCredential], Execution: input.Execution.Clone()}
 		if candidate.Hosts[n.HostID].HostKey == "" || candidate.Identities[n.IdentityID].CredentialID == "" {
 			n.Disabled = true
 			report.Warnings = append(report.Warnings, fmt.Sprintf("node %q imported disabled: credential or host key is not configured", name))

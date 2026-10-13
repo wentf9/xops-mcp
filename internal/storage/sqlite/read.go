@@ -80,9 +80,16 @@ func loadInventory(ctx context.Context, tx *sql.Tx) (storage.Inventory, error) {
 			v.Credentials[x.ID] = x
 			return err
 		}},
-		{"SELECT id,name,host_id,identity_id,sudo_mode,COALESCE(privilege_credential_id,''),disabled FROM nodes", func(r *sql.Rows) error {
+		{"SELECT id,name,host_id,identity_id,sudo_mode,COALESCE(privilege_credential_id,''),disabled,execution FROM nodes", func(r *sql.Rows) error {
 			var x storage.Node
-			err := r.Scan(&x.ID, &x.Name, &x.HostID, &x.IdentityID, &x.SudoMode, &x.PrivilegeCredentialID, &x.Disabled)
+			var execution string
+			err := r.Scan(&x.ID, &x.Name, &x.HostID, &x.IdentityID, &x.SudoMode, &x.PrivilegeCredentialID, &x.Disabled, &execution)
+			if err != nil {
+				return err
+			}
+			if err := json.Unmarshal([]byte(execution), &x.Execution); err != nil {
+				return fmt.Errorf("decode node execution: %w", err)
+			}
 			v.Nodes[x.ID] = x
 			return err
 		}},

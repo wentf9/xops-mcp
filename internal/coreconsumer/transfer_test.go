@@ -62,6 +62,9 @@ func exerciseCoreTools(t *testing.T, ctx context.Context, session *mcp.ClientSes
 	if !bytes.Contains(data, []byte("fixture-output")) {
 		t.Fatalf("command result = %s", data)
 	}
+	if result["outcome"] != "completed" || result["exitCode"] != float64(0) || result["planDigest"] == "" {
+		t.Fatalf("missing structured execution result: %+v", result)
+	}
 	payload := []byte("consumer file\x00\xff\n")
 	sum := sha256.Sum256(payload)
 	var upload runtime.PreparedTransferOutput
@@ -70,6 +73,13 @@ func exerciseCoreTools(t *testing.T, ctx context.Context, session *mcp.ClientSes
 	var download runtime.PreparedTransferOutput
 	callTool(t, ctx, session, "xops_prepare_download", runtime.PrepareDownloadInput{RequestID: "download", NodeID: "compat-node", RemotePath: "/consumer"}, &download)
 	got := sendContent(t, ctx, client, download, nil)
+	callTool(t, ctx, session, "xops_fs_cp", map[string]any{"nodeID": "compat-node", "srcPath": "/consumer", "destPath": "/consumer-copy"}, &result)
+	var copied runtime.PreparedTransferOutput
+	callTool(t, ctx, session, "xops_prepare_download", runtime.PrepareDownloadInput{RequestID: "copy-download", NodeID: "compat-node", RemotePath: "/consumer-copy"}, &copied)
+	if actual := sendContent(t, ctx, client, copied, nil); !bytes.Equal(actual, payload) {
+		t.Fatalf("SFTP copy content changed: %q", actual)
+	}
+	callTool(t, ctx, session, "xops_fs_rm", map[string]any{"nodeID": "compat-node", "path": "/consumer-copy"}, &result)
 	if !bytes.Equal(got, payload) {
 		t.Fatalf("file content changed: %q", got)
 	}

@@ -50,7 +50,7 @@ nodes:
 | --- | --- |
 | `hosts.<名称>` | `address`、`port`（默认 22）、`host_key` |
 | `identities.<名称>` | `user`、`credential`（凭据名称） |
-| `nodes.<名称>` | `host`、`identity`、`aliases`、`tags`、`proxy_jump`、`disabled`、`sudo_mode`、`privilege_credential` |
+| `nodes.<名称>` | `host`、`identity`、`aliases`、`tags`、`proxy_jump`、`disabled`、`sudo_mode`、`privilege_credential`、`execution` |
 | `tags` | 标签名称列表，可以没有关联节点 |
 | `credentials.<名称>` | `kind: password` 和 `password`；或 `kind: key`、`private_key`、可选 `passphrase` |
 | `policy` | 操作策略设置 |
@@ -86,3 +86,7 @@ xops-mcp import --config server.yaml --format xops-cli --file exported-config.ya
 支持主机、身份、节点、别名、标签、跳板和操作策略。源文件不会修改，导入节点保持停用。原来的密码库、私钥路径和 SSH agent 不会自动复制；在控制台重新填写凭据并核对公钥后再启用。
 
 旧配置中直接填写的密码，只有添加 `--include-secrets` 才会导入。原配置中的自动提权方式会转为不提权并给出提示。检查预览后，添加 `--apply --expected-revision` 应用；不要仅凭预览成功就启动远程操作。
+
+## 命令执行配置
+
+服务端库存节点可带可选的 `execution`，字段为 `interpreter`、`launch_dialect` 和 `login`（布尔值，省略使用默认模式）。CLI 导入支持全局及节点级 `execution`，将继承后的配置保存到各节点；保留显式的 `login: false`。无效的解释器与启动 Shell 组合会被拒绝。未设置时执行命令会自动探测环境；显式 `interpreter: server` 保留服务端原命令。

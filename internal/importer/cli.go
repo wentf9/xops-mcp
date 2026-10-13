@@ -10,17 +10,19 @@ import (
 	"strings"
 
 	"github.com/wentf9/xops-cli/core/mcp/policy"
+	"github.com/wentf9/xops-cli/core/ssh"
 	"gopkg.in/yaml.v3"
 )
 
 // These are migration DTOs for the serialized format, not copies of upstream
 // application behavior. CLI-only stores and transport settings are ignored.
 type cliDocument struct {
-	SchemaVersion         int            `yaml:"schema_version"`
-	Credential            yaml.Node      `yaml:"credential"`
-	MCP                   yaml.Node      `yaml:"mcp"`
-	PasswordPromptPattern string         `yaml:"password_prompt_pattern"`
-	Guardrail             *policy.Config `yaml:"guardrail"`
+	Execution             *ssh.ExecutionConfig `yaml:"execution,omitempty"`
+	SchemaVersion         int                  `yaml:"schema_version"`
+	Credential            yaml.Node            `yaml:"credential"`
+	MCP                   yaml.Node            `yaml:"mcp"`
+	PasswordPromptPattern string               `yaml:"password_prompt_pattern"`
+	Guardrail             *policy.Config       `yaml:"guardrail"`
 	Hosts                 map[string]struct {
 		Alias   []string `yaml:"alias"`
 		Address string   `yaml:"address"`
@@ -37,15 +39,16 @@ type cliDocument struct {
 		PassphraseRef    yaml.Node `yaml:"passphrase_ref"`
 	} `yaml:"identities"`
 	Nodes map[string]struct {
-		HostRef               string    `yaml:"host_ref"`
-		IdentityRef           string    `yaml:"identity_ref"`
-		ProxyJump             string    `yaml:"proxy_jump"`
-		Alias                 []string  `yaml:"alias"`
-		Tags                  []string  `yaml:"tags"`
-		SudoMode              string    `yaml:"sudo_mode"`
-		SuPwd                 string    `yaml:"su_pwd"`
-		PrivilegePasswordRef  yaml.Node `yaml:"privilege_password_ref"`
-		PasswordPromptPattern string    `yaml:"password_prompt_pattern"`
+		Execution             *ssh.ExecutionConfig `yaml:"execution,omitempty"`
+		HostRef               string               `yaml:"host_ref"`
+		IdentityRef           string               `yaml:"identity_ref"`
+		ProxyJump             string               `yaml:"proxy_jump"`
+		Alias                 []string             `yaml:"alias"`
+		Tags                  []string             `yaml:"tags"`
+		SudoMode              string               `yaml:"sudo_mode"`
+		SuPwd                 string               `yaml:"su_pwd"`
+		PrivilegePasswordRef  yaml.Node            `yaml:"privilege_password_ref"`
+		PasswordPromptPattern string               `yaml:"password_prompt_pattern"`
 	} `yaml:"nodes"`
 }
 
@@ -88,7 +91,11 @@ func decodeCLI(data []byte) (Document, []string, error) {
 			mode = "none"
 			warnings = append(warnings, fmt.Sprintf("node %q: automatic privilege detection replaced by none; configure an explicit mode", name))
 		}
-		node := Node{Host: n.HostRef, Identity: n.IdentityRef, ProxyJump: n.ProxyJump, Aliases: n.Alias, Tags: n.Tags, SudoMode: mode, Disabled: true}
+		execution, err := ssh.EffectiveExecution(n.Execution, source.Execution)
+		if err != nil {
+			return d, nil, fmt.Errorf("node %q execution: %w", name, err)
+		}
+		node := Node{Execution: execution, Host: n.HostRef, Identity: n.IdentityRef, ProxyJump: n.ProxyJump, Aliases: n.Alias, Tags: n.Tags, SudoMode: mode, Disabled: true}
 		if source.SchemaVersion == 2 && n.SuPwd != "" {
 			return d, nil, errors.New("schema v2 must not contain plaintext privilege credentials")
 		}

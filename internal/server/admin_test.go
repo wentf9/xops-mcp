@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wentf9/xops-cli/core/ssh"
+
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wentf9/xops-cli/core/mcp/ports"
@@ -241,7 +243,7 @@ func TestWebAdministrationControlsLiveMCP(t *testing.T) {
 	credentialID := p.save("credentials", service.CredentialInput{Name: "login", Kind: "password", Secret: &service.MaterialInput{Password: sshfixture.Password}})
 	identityID := p.save("identities", service.IdentityInput{Name: "operator", User: "fixture", CredentialID: credentialID})
 	tagID := p.save("tags", service.TagInput{Name: "staging"})
-	node := service.NodeInput{Name: "web-node", HostID: hostID, IdentityID: identityID, Disabled: true, TagIDs: []string{tagID}, SudoMode: "none"}
+	node := service.NodeInput{Execution: &ssh.ExecutionConfig{Interpreter: ssh.InterpreterServer}, Name: "web-node", HostID: hostID, IdentityID: identityID, Disabled: true, TagIDs: []string{tagID}, SudoMode: "none"}
 	nodeID := p.save("nodes", node)
 	oldTag := p.etag
 	p.request("PUT", "/api/v1/hosts/"+hostID, service.HostInput{Name: "ignored", Address: host, Port: port}, 412, func(r *http.Request) { r.Header.Set("If-Match", "\"0\"") })

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wentf9/xops-cli/core/ssh"
+
 	"github.com/wentf9/xops-cli/core/mcp/ports"
 	"github.com/wentf9/xops-cli/core/testutil/sshfixture"
 	"github.com/wentf9/xops-mcp/internal/service"
@@ -125,8 +127,8 @@ func TestIndependentHostKeyEnrollmentAndJumpRotation(t *testing.T) {
 	confirm(jumpID, preview(jumpID, public), 200)
 	credentialID := p.save("credentials", service.CredentialInput{Name: "fixture-password", Kind: "password", Secret: &service.MaterialInput{Password: sshfixture.Password}})
 	identityID := p.save("identities", service.IdentityInput{Name: "fixture", User: "fixture", CredentialID: credentialID})
-	jumpNodeID := p.save("nodes", service.NodeInput{Name: "jump", HostID: jumpID, IdentityID: identityID, SudoMode: "none"})
-	nodeID := p.save("nodes", service.NodeInput{Name: "target", HostID: hostID, IdentityID: identityID, JumpIDs: []string{jumpNodeID}, SudoMode: "none"})
+	jumpNodeID := p.save("nodes", service.NodeInput{Execution: &ssh.ExecutionConfig{Interpreter: ssh.InterpreterServer}, Name: "jump", HostID: jumpID, IdentityID: identityID, SudoMode: "none"})
+	nodeID := p.save("nodes", service.NodeInput{Execution: &ssh.ExecutionConfig{Interpreter: ssh.InterpreterServer}, Name: "target", HostID: hostID, IdentityID: identityID, JumpIDs: []string{jumpNodeID}, SudoMode: "none"})
 	p.request("POST", "/api/v1/nodes/"+nodeID+"/test", map[string]any{}, 200, nil)
 	if peer.Forwards.Load() == 0 || peer.Executed.Load() != 0 {
 		t.Fatal("connection test bypassed the jump or executed a command")

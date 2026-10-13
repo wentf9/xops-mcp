@@ -14,7 +14,7 @@ func TestTokenNodeScopeMigrationPreservesExistingTokens(t *testing.T) {
 	if err := s.SaveMCPToken(t.Context(), 0, original, ports.AuditEvent{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.ExecContext(t.Context(), `ALTER TABLE mcp_tokens DROP COLUMN node_ids; ALTER TABLE mcp_tokens DROP COLUMN node_scope; PRAGMA user_version=7`); err != nil {
+	if _, err := s.db.ExecContext(t.Context(), `ALTER TABLE nodes DROP COLUMN execution; ALTER TABLE mcp_tokens DROP COLUMN node_ids; ALTER TABLE mcp_tokens DROP COLUMN node_scope; PRAGMA user_version=7`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {

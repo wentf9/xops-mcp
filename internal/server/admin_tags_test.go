@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wentf9/xops-cli/core/ssh"
+
 	"github.com/wentf9/xops-mcp/internal/adapters/xops"
 	"github.com/wentf9/xops-mcp/internal/service"
 	"github.com/wentf9/xops-mcp/internal/testutil"
@@ -48,7 +50,7 @@ func TestIndependentTagsUseStableIDs(t *testing.T) {
 	p.request("PUT", "/api/v1/tags/missing", service.TagInput{Name: "other"}, 404, nil)
 	hostID := p.save("hosts", service.HostInput{Name: "host", Address: "127.0.0.1", Port: 22})
 	identityID := p.save("identities", service.IdentityInput{Name: "identity", User: "fixture"})
-	input := service.NodeInput{Name: "node", HostID: hostID, IdentityID: identityID, Disabled: true, TagIDs: []string{tagID}}
+	input := service.NodeInput{Execution: &ssh.ExecutionConfig{Interpreter: ssh.InterpreterServer}, Name: "node", HostID: hostID, IdentityID: identityID, Disabled: true, TagIDs: []string{tagID}}
 	nodeID := p.save("nodes", input)
 	check(p, map[string]int{tagID: 1, unusedID: 0})
 	old := p.etag
