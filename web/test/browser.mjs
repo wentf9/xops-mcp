@@ -292,6 +292,34 @@ try {
     (await page.locator("body").innerText()).includes(info.sshPassword),
     false,
   );
+  const keyPassphrase = " browser-key-passphrase ";
+  const tempKeyDir = await mkdtemp(resolve(tmpdir(), "browser-key-test-"));
+  const tempKeyFile = resolve(tempKeyDir, "test_id_ed25519");
+  execFileSync("ssh-keygen", ["-t", "ed25519", "-N", keyPassphrase, "-f", tempKeyFile, "-C", ""]);
+  try {
+    await page.getByRole("button", { name: "新建凭据", exact: false }).click();
+    await form().getByLabel("类型", { exact: true }).selectOption("key");
+    await form().locator("#private-key-file").setInputFiles(tempKeyFile);
+    await form().locator("#key-validate-status").getByText("私钥受密码保护", { exact: false }).waitFor();
+    await form().getByLabel("私钥口令", { exact: false }).fill("wrong-passphrase");
+    await form().getByRole("button", { name: "验证私钥与口令" }).click();
+    await form().locator("#key-validate-status").getByText("口令不正确", { exact: false }).waitFor();
+    const keyText = await form().locator('[name="privateKey"]').inputValue();
+    await form().locator('[name="privateKey"]').fill("  " + keyText + "\n  ");
+    await form().getByLabel("私钥口令", { exact: false }).fill(keyPassphrase);
+    await form().getByLabel("私钥口令", { exact: false }).press("Enter");
+    await form().locator("#key-validate-status").getByText("口令正确", { exact: false }).waitFor();
+    const validation = await form().locator("#key-validate-status").textContent();
+    await form().getByLabel("名称", { exact: true }).fill("browser-key");
+    assert.equal(await form().locator("#key-validate-status").textContent(), validation);
+    await save();
+    assert.equal(
+      (await page.locator("body").innerText()).includes(keyPassphrase),
+      false,
+    );
+  } finally {
+    await rm(tempKeyDir, { recursive: true, force: true });
+  }
   await nav("登录身份");
   await page.getByRole("button", { name: "新建身份", exact: false }).click();
   await form().getByLabel("名称", { exact: true }).fill("browser-identity");
@@ -323,6 +351,8 @@ try {
     .fill(browserAliases.join("\n"));
   await form().getByLabel("production", { exact: true }).check();
   await form().getByLabel("service", { exact: true }).check();
+  await form().getByRole("button", { name: "测试提权能力", exact: true }).click();
+  await form().locator("#modal-privilege-status").getByText("提权测试成功", { exact: false }).waitFor();
   await form().getByLabel("启用节点", { exact: true }).check();
   await save();
   await nav("MCP Token");
@@ -369,6 +399,17 @@ try {
     .locator("#notices")
     .getByText("SSH 连接成功", { exact: false })
     .waitFor();
+  await page.getByRole("button", { name: "测试提权", exact: true }).click();
+  await page
+    .locator("#notices")
+    .getByText("提权测试成功", { exact: false })
+    .waitFor();
+  const nodeRow = page.getByRole("row").filter({ hasText: "browser-node" });
+  await nodeRow.getByRole("button", { name: "编辑", exact: true }).click();
+  await form().getByRole("button", { name: "测试提权能力", exact: true }).click();
+  await form().locator("#modal-privilege-status").getByText("提权测试成功", { exact: false }).waitFor();
+  await form().getByRole("button", { name: "取消" }).click();
+  await page.locator("dialog[open]").waitFor({ state: "hidden" });
   await page.screenshot({
     path: resolve(artifacts, "nodes.png"),
     fullPage: true,

@@ -14,9 +14,9 @@ Change your password on the account page. For a forgotten password, use [offline
 
 1. **Hosts and trust**: add the SSH address and port, then open the host-key dialog. Fetch the key from the host or enter one obtained through a trusted channel such as its console.
 2. **Verify the key**: independently check its fingerprint before confirming. Unconfirmed keys are not automatically trusted. Each preview lasts two minutes; repeat it after changing the address or key.
-3. **Credentials**: add the remote password or SSH private key, including its passphrase when needed. Secrets are not shown again. Leaving secret fields empty while editing keeps existing contents.
+3. **Credentials**: add the remote password or SSH private key. When selecting a private key, upload a key file or paste its PEM/OpenSSH content, and verify the key format and passphrase before saving; passphrase-protected keys require the correct passphrase to validate and save. Surrounding whitespace in key content is trimmed; spaces in passphrases are preserved. Revalidate after changing the key or passphrase; moving focus alone preserves the result. Secrets are not shown again. Leaving secret fields empty while editing keeps existing contents.
 4. **Login identities**: specify the SSH username and associated credential.
-5. **Nodes**: choose host, identity and tags, configure jumps or privilege elevation if needed, and enable the node. The connection test verifies SSH login without executing a command.
+5. **Nodes**: choose host, identity and tags, configure jumps or privilege elevation if needed, and enable the node. The connection test verifies SSH login without executing a command; an unspecified execution environment first triggers automatic Shell discovery. The privilege test verifies sudo/su escalation and requires the resulting identity to have UID 0. Retest after manually changing the connection, privilege settings, or execution environment.
 
 For hosts reachable only through a jump, enter an independently verified host key before choosing ordered jumps. Jumps are ordered from this service to the target. Disabling a jump also prevents connections to dependent nodes.
 
@@ -56,7 +56,7 @@ Local transfer files belong to the client device. Archive directories before tra
 
 ## Command execution environment
 
-In the node editor, click **Auto probe** to get recommended settings, or set the interpreter, launch shell, and login mode manually. Supported interpreters are `server`, `bash`, `sh`, `zsh`, `fish`, `powershell`, `pwsh`, and `cmd`. Automatic probing runs fixed, bounded diagnostic commands when a command needs the environment; it does not save settings. Connection tests still check SSH login only. Explicit `server` passes the original command to the server. Privilege execution requires a supported Bash, sh, zsh, or fish environment.
+In the node editor, click **Auto probe** to get recommended settings, or set the interpreter, launch shell, and login mode manually. Supported interpreters are `server`, `bash`, `sh`, `zsh`, `fish`, `powershell`, `pwsh`, and `cmd`. Automatic probing runs fixed, bounded diagnostic commands when a command needs the environment; it does not save settings. Connection tests still check SSH login only. Explicit `server` passes the original command to the server. Privilege execution requires a supported Bash, sh, zsh, or fish environment. If you test privileges before probing Shell settings, an unchanged configuration preserves the privilege result; a changed configuration automatically rechecks privileges without another click.
 
 MCP `xops_ssh_run` accepts an optional `execution` override using `interpreter`, `launchDialect`, and `login`. Responses include `outcome` (`not_started`, `completed`, or `unknown`), optional `exitCode`/`signal`, `planDigest`, and `truncated`. A nonzero exit status is a failed command; do not automatically replay an `unknown` result. File copy and removal use SFTP, including on Windows targets, without requiring a POSIX shell.
 

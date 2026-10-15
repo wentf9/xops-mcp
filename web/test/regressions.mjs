@@ -1488,6 +1488,352 @@ cases.execution_interpreter_compatibility = async ({ page, state }) => {
   assert.equal(await form.locator('[name="launchDialect"]').inputValue(), "");
   assert.equal(await form.locator('[name="login"]').isEnabled(), true);
 };
+for (const field of ["hostID", "identityID", "sudoMode", "privilegeCredentialID", "interpreter", "launchDialect", "login", "remove-jump"]) {
+  cases["privilege_probe_changed_" + field] = async ({ page, state }) => {
+    populate(state);
+    state.inventory.hosts.push({ ...state.inventory.hosts[0], id: "other-host", name: "other-host" });
+    state.inventory.identities.push({ id: "other-identity", name: "other-identity", user: "other" });
+    state.inventory.credentials.push({ id: "privilege", name: "privilege", kind: "password" });
+    state.inventory.nodes[0].execution = { interpreter: "bash", launchDialect: "posix", login: false };
+    state.inventory.nodes[0].jumpIDs = ["b"];
+    const started = barrier(), release = barrier(), completed = barrier();
+    state.routes.set("/api/v1/nodes/privilege-probe", async route => {
+      started.release();
+      await bounded(release.ready);
+      try { await json(route, { escalated: true, sudoMode: "root", user: "root", elapsedMS: 1 }); }
+      catch { /* Editing the form aborts the request. */ }
+      finally { completed.release(); }
+    });
+    await page.goto(origin + "/#nodes");
+    await page.locator('[data-action="edit"][data-kind="nodes"][data-id="a"]').first().click();
+    const form = page.locator("dialog[open] form");
+    await form.locator("#modal-test-privilege").click();
+    await bounded(started.ready);
+    try {
+      if (field === "remove-jump") await form.locator("[data-remove-jump]").click();
+      else await form.locator(`[name="${field}"]`).selectOption({
+        hostID: "other-host", identityID: "other-identity", sudoMode: "su",
+        privilegeCredentialID: "privilege", interpreter: "sh", launchDialect: "fish", login: "true",
+      }[field]);
+    } finally { release.release(); }
+    await bounded(completed.ready);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await form.locator("#modal-privilege-status").textContent(), "");
+    assert.equal(await form.locator("#modal-test-privilege").isEnabled(), true);
+    assert.equal(await page.locator("#notices").textContent(), "");
+  };
+}
+for (const fails of [false, true]) {
+  cases[`privilege_probe_closed_${fails ? "failure" : "success"}`] = async ({ page, state }) => {
+    populate(state);
+    const started = barrier(), release = barrier(), completed = barrier();
+    let calls = 0;
+    state.routes.set("/api/v1/nodes/privilege-probe", async route => {
+      if (++calls > 1) return json(route, { escalated: true, sudoMode: "sudoer", user: "new-root", elapsedMS: 2 });
+      started.release();
+      await bounded(release.ready);
+      try { await json(route, fails ? { message: "old-probe-error" } : { escalated: true, sudoMode: "root", user: "old-root", elapsedMS: 1 }, fails ? 502 : 200); }
+      catch { /* Closing the dialog aborts the old request. */ }
+      finally { completed.release(); }
+    });
+    await page.goto(origin + "/#nodes");
+    const open = () => page.locator('[data-action="edit"][data-kind="nodes"][data-id="a"]').first().click();
+    await open();
+    let form = page.locator("dialog[open] form");
+    await form.locator("#modal-test-privilege").click();
+    await bounded(started.ready);
+    try {
+      await form.getByRole("button", { name: "取消", exact: true }).click();
+      await page.locator("dialog[open]").waitFor({ state: "hidden" });
+      await open();
+      form = page.locator("dialog[open] form");
+      await form.locator("#modal-test-privilege").click();
+      await form.locator("#modal-privilege-status").filter({ hasText: "new-root" }).waitFor();
+    } finally { release.release(); }
+    await bounded(completed.ready);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.match(await form.locator("#modal-privilege-status").textContent(), /new-root/);
+    assert.doesNotMatch(await page.locator("#notices").textContent(), /old-root|old-probe-error/);
+  };
+}
+for (const privilegeFirst of [true, false]) {
+  cases[`privilege_probe_discovery_${privilegeFirst ? "completed" : "pending"}`] = async ({ page, state }) => {
+    populate(state);
+    state.inventory.nodes[0].execution = { interpreter: "bash", launchDialect: "posix", login: false };
+    const discoveryStarted = barrier(), discoveryRelease = barrier();
+    const privilegeStarted = barrier(), privilegeRelease = barrier(), privilegeCompleted = barrier();
+    state.routes.set("/api/v1/nodes/execution-probe", async route => {
+      discoveryStarted.release();
+      await bounded(discoveryRelease.ready);
+      return json(route, { availableInterpreters: ["sh"], suggestedConfig: { interpreter: "sh", launchDialect: "posix", login: false } });
+    });
+    let probes = 0;
+    state.routes.set("/api/v1/nodes/privilege-probe", async route => {
+      if (++probes > 1) {
+        assert.equal(route.request().postDataJSON().execution.interpreter, "sh");
+        return json(route, { escalated: true, sudoMode: "root", user: "rechecked-root", elapsedMS: 2 });
+      }
+      assert.equal(route.request().postDataJSON().execution.interpreter, "bash");
+      privilegeStarted.release();
+      await bounded(privilegeRelease.ready);
+      try { await json(route, { escalated: true, sudoMode: "root", user: "root", elapsedMS: 1 }); }
+      catch { /* Applying a discovered configuration cancels the old test. */ }
+      finally { privilegeCompleted.release(); }
+    });
+    await page.goto(origin + "/#nodes");
+    await page.locator('[data-action="edit"][data-kind="nodes"][data-id="a"]').first().click();
+    const form = page.locator("dialog[open] form");
+    try {
+      await form.locator("#probe-execution").click();
+      await bounded(discoveryStarted.ready);
+      await form.locator("#modal-test-privilege").click();
+      await bounded(privilegeStarted.ready);
+      if (privilegeFirst) {
+        privilegeRelease.release();
+        await form.locator("#modal-privilege-status").filter({ hasText: "提权测试成功" }).waitFor();
+      }
+      discoveryRelease.release();
+      await form.locator("#execution-probe-result").filter({ hasText: "已选中推荐配置" }).waitFor();
+    } finally { discoveryRelease.release(); privilegeRelease.release(); }
+    await bounded(privilegeCompleted.ready);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await form.locator('[name="interpreter"]').inputValue(), "sh");
+    await form.locator("#modal-privilege-status").filter({ hasText: "rechecked-root" }).waitFor();
+    assert.equal(probes, 2);
+    assert.equal(await form.locator("#modal-test-privilege").isEnabled(), true);
+  };
+}
+for (const changes of ["privateKey", "passphrase", "file", "kind", "close"]) {
+  for (const fails of [false, true]) {
+    cases[`key_validation_changed_${changes}_${fails ? "failure" : "success"}`] = async ({ page, state }) => {
+      populate(state);
+      const started = barrier(), release = barrier(), completed = barrier();
+      let calls = 0;
+      state.routes.set("/api/v1/credentials/validate-key", async route => {
+        if (++calls > 1) return json(route, { valid: true, protected: true, fingerprint: "SHA256:new-key", keyType: "ssh-new-key" });
+        started.release();
+        await bounded(release.ready);
+        try { await json(route, fails ? { message: "old-key-error" } : { valid: true, protected: true, fingerprint: "SHA256:old-key", keyType: "ssh-old-key" }, fails ? 502 : 200); }
+        catch { /* Input replacement or closing the dialog cancels validation. */ }
+        finally { completed.release(); }
+      });
+      await page.goto(origin + "/#credentials");
+      const open = async () => {
+        await page.getByRole("button", { name: "新建凭据", exact: false }).click();
+        const form = page.locator("dialog[open] form");
+        await form.locator('[name="kind"]').selectOption("key");
+        return form;
+      };
+      let form = await open();
+      await form.locator('[name="privateKey"]').fill("old-key");
+      await form.locator('[name="passphrase"]').fill("old-passphrase");
+      await form.locator("#btn-validate-key").click();
+      await bounded(started.ready);
+      try {
+        if (["privateKey", "passphrase"].includes(changes)) {
+          await form.locator(`[name="${changes}"]`).fill("changed-input");
+        } else if (changes === "file") {
+          await form.locator("#private-key-file").setInputFiles({ name: "new.key", mimeType: "text/plain", buffer: Buffer.from("new-key") });
+          await form.locator("#key-validate-status").filter({ hasText: "SHA256:new-key" }).waitFor();
+        } else {
+          if (changes === "close") {
+            await form.getByRole("button", { name: "取消", exact: true }).click();
+            await page.locator("dialog[open]").waitFor({ state: "hidden" });
+            form = await open();
+          } else {
+            await form.locator('[name="kind"]').selectOption("password");
+            await form.locator('[name="kind"]').selectOption("key");
+          }
+          await form.locator('[name="privateKey"]').fill("new-key");
+          await form.locator("#btn-validate-key").click();
+          await form.locator("#key-validate-status").filter({ hasText: "SHA256:new-key" }).waitFor();
+        }
+      } finally { release.release(); }
+      await bounded(completed.ready);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const status = await form.locator("#key-validate-status").textContent();
+      if (["privateKey", "passphrase"].includes(changes)) assert.equal(status, "");
+      else assert.match(status, /SHA256:new-key/);
+      assert.doesNotMatch(await page.locator("#notices").textContent(), /ssh-old-key|old-key-error/);
+      assert.equal(await form.locator("#btn-validate-key").isEnabled(), true);
+    };
+  }
+}
+cases.key_validation_queued_close = async ({ page, state }) => {
+  populate(state);
+  const started = barrier(), release = barrier();
+  state.routes.set("/api/v1/credentials/validate-key", async route => {
+    started.release();
+    await bounded(release.ready);
+    try { await json(route, { valid: true, protected: false }); }
+    catch { /* The current dialog's close must still cancel the request. */ }
+  });
+  await page.goto(origin + "/#credentials");
+  await page.getByRole("button", { name: "新建凭据", exact: false }).click();
+  const form = page.locator("dialog[open] form");
+  await form.locator('[name="kind"]').selectOption("key");
+  // A close event queued by a previous dialog must not consume cleanup for
+  // the active one. The real close below still needs to abort validation.
+  await page.locator("dialog").evaluate(dialog => dialog.dispatchEvent(new Event("close")));
+  await form.locator('[name="privateKey"]').fill("synthetic-key");
+  await form.locator("#btn-validate-key").click();
+  await bounded(started.ready);
+  try {
+    const aborted = page.waitForEvent("requestfailed", request => new URL(request.url()).pathname === "/api/v1/credentials/validate-key");
+    await form.getByRole("button", { name: "取消", exact: true }).click();
+    await bounded(aborted);
+  } finally { release.release(); }
+  assert.equal(await page.locator("#notices").textContent(), "");
+};
+for (const scenario of ["unchanged", "changed", "retest-failure", "discovery-failure", "untested", "manual-edit"]) {
+  cases["privilege_shell_retest_" + scenario] = async ({ page, state }) => {
+    populate(state);
+    const shellStarted = barrier(), shellRelease = barrier();
+    const retestStarted = barrier(), retestRelease = barrier();
+    let tests = 0;
+    state.routes.set("/api/v1/nodes/privilege-probe", async route => {
+      tests++;
+      const body = route.request().postDataJSON();
+      assert.equal(body.nodeID, "");
+      if (tests === 1) {
+        assert.equal(body.execution.interpreter, "bash");
+        return json(route, { escalated: true, sudoMode: "root", user: "original-root", elapsedMS: 1 });
+      }
+      assert.equal(body.execution.interpreter, "sh");
+      retestStarted.release();
+      await bounded(retestRelease.ready);
+      return json(route, scenario === "retest-failure" ? { message: "新配置提权失败" } : { escalated: true, sudoMode: "root", user: "rechecked-root", elapsedMS: 2 }, scenario === "retest-failure" ? 502 : 200);
+    });
+    state.routes.set("/api/v1/nodes/execution-probe", async route => {
+      shellStarted.release();
+      await bounded(shellRelease.ready);
+      if (scenario === "discovery-failure") return json(route, { message: "Shell 探测失败" }, 502);
+      const interpreter = scenario === "unchanged" ? "bash" : "sh";
+      return json(route, { availableInterpreters: [interpreter], suggestedConfig: { interpreter, launchDialect: "posix", login: false } });
+    });
+    await page.goto(origin + "/#nodes");
+    await page.getByRole("button", { name: "新建节点", exact: false }).click();
+    const form = page.locator("dialog[open] form");
+    await form.locator('[name="hostID"]').selectOption("host");
+    await form.locator('[name="identityID"]').selectOption("identity");
+    await form.locator('[name="interpreter"]').selectOption("bash");
+    await form.locator('[name="launchDialect"]').selectOption("posix");
+    await form.locator('[name="login"]').selectOption("false");
+    if (scenario !== "untested") {
+      await form.locator("#modal-test-privilege").click();
+      await form.locator("#modal-privilege-status").filter({ hasText: "original-root" }).waitFor();
+    }
+    if (scenario === "manual-edit") await form.locator('[name="sudoMode"]').selectOption("root");
+    const before = await form.locator("#modal-privilege-status").textContent();
+    try {
+      await form.locator("#probe-execution").click();
+      await bounded(shellStarted.ready);
+      assert.equal(await form.locator("#modal-privilege-status").textContent(), before);
+      shellRelease.release();
+      await form.locator("#execution-probe-result").filter({ hasText: scenario === "discovery-failure" ? "Shell 探测失败" : "已选中推荐配置" }).waitFor();
+      if (["changed", "retest-failure"].includes(scenario)) {
+        await bounded(retestStarted.ready);
+        assert.match(await form.locator("#modal-privilege-status").textContent(), /自动重新验证/);
+        assert.equal(await form.locator("#modal-test-privilege").isDisabled(), true);
+        retestRelease.release();
+        await form.locator("#modal-privilege-status").filter({ hasText: scenario === "retest-failure" ? "新配置提权失败" : "rechecked-root" }).waitFor();
+        assert.equal(tests, 2);
+      } else {
+        assert.equal(await form.locator("#modal-privilege-status").textContent(), before);
+        assert.equal(tests, scenario === "untested" ? 0 : 1);
+      }
+    } finally { shellRelease.release(); retestRelease.release(); }
+  };
+}
+for (const completed of [false, true]) {
+  cases[`key_validation_enter_blur_${completed ? "completed" : "pending"}`] = async ({ page, state }) => {
+    populate(state);
+    const started = barrier(), release = barrier();
+    let requests = 0;
+    state.routes.set("/api/v1/credentials/validate-key", async route => {
+      requests++;
+      assert.equal(route.request().postDataJSON().passphrase, " passphrase with spaces ");
+      started.release();
+      await bounded(release.ready);
+      return json(route, { valid: true, protected: true, fingerprint: "SHA256:enter-blur", keyType: "ssh-ed25519" });
+    });
+    await page.goto(origin + "/#credentials");
+    await page.getByRole("button", { name: "新建凭据", exact: false }).click();
+    const form = page.locator("dialog[open] form");
+    await form.locator('[name="kind"]').selectOption("key");
+    await form.locator('[name="privateKey"]').fill("synthetic-key");
+    await form.locator('[name="passphrase"]').fill(" passphrase with spaces ");
+    await form.locator('[name="passphrase"]').press("Enter");
+    await bounded(started.ready);
+    try {
+      if (completed) {
+        release.release();
+        await form.locator("#key-validate-status").filter({ hasText: "SHA256:enter-blur" }).waitFor();
+      }
+      const before = await form.locator("#key-validate-status").textContent();
+      await form.locator('[name="name"]').fill("enter-blur-key");
+      assert.equal(await form.locator("#key-validate-status").textContent(), before);
+    } finally { release.release(); }
+    await form.locator("#key-validate-status").filter({ hasText: "SHA256:enter-blur" }).waitFor();
+    assert.equal(requests, 1);
+    // A real value change delivered by change alone must still invalidate it.
+    await form.locator('[name="passphrase"]').evaluate(input => {
+      input.value += "changed";
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    assert.equal(await form.locator("#key-validate-status").textContent(), "");
+    assert.equal(await form.locator("#btn-validate-key").isEnabled(), true);
+  };
+}
+cases.key_validation_save_normalization = async ({ page, state }) => {
+  populate(state);
+  const canonicalKey = "-----BEGIN SYNTHETIC KEY-----\nsynthetic-material\n-----END SYNTHETIC KEY-----";
+  const passphrase = " exact passphrase ";
+  let validated, saved;
+  state.routes.set("/api/v1/credentials/validate-key", route => {
+    validated = route.request().postDataJSON();
+    assert.deepEqual(validated, { privateKey: canonicalKey, passphrase });
+    return json(route, { valid: true, protected: true, fingerprint: "SHA256:normalized" });
+  });
+  state.routes.set("/api/v1/credentials", route => {
+    saved = route.request().postDataJSON();
+    assert.equal(saved.secret.privateKey, validated.privateKey);
+    assert.equal(saved.secret.passphrase, validated.passphrase);
+    return json(route, { id: "key", revision: ++state.inventory.revision });
+  });
+  await page.goto(origin + "/#credentials");
+  await page.getByRole("button", { name: "新建凭据", exact: false }).click();
+  const form = page.locator("dialog[open] form");
+  await form.locator('[name="kind"]').selectOption("key");
+  await form.locator('[name="name"]').fill("normalized-key");
+  await form.locator('[name="privateKey"]').fill("  " + canonicalKey + "\n  ");
+  await form.locator('[name="passphrase"]').fill(passphrase);
+  await form.locator("#btn-validate-key").click();
+  await form.locator("#key-validate-status").filter({ hasText: "SHA256:normalized" }).waitFor();
+  // Equivalent surrounding whitespace does not change the validated material.
+  await form.locator('[name="privateKey"]').fill("\n" + canonicalKey + "\n");
+  assert.match(await form.locator("#key-validate-status").textContent(), /SHA256:normalized/);
+  await form.getByRole("button", { name: "保存", exact: true }).click();
+  await page.locator("dialog[open]").waitFor({ state: "hidden" });
+  assert.equal(saved.secret.privateKey, canonicalKey);
+};
+cases.key_whitespace_edit_preserves_material = async ({ page, state }) => {
+  populate(state);
+  state.inventory.credentials.push({ id: "key", name: "original-key", kind: "key" });
+  let saved;
+  state.routes.set("/api/v1/credentials/key", route => {
+    saved = route.request().postDataJSON();
+    return json(route, { id: "key", revision: ++state.inventory.revision });
+  });
+  await page.goto(origin + "/#credentials");
+  await page.locator('[data-action="edit"][data-kind="credentials"][data-id="key"]').click();
+  const form = page.locator("dialog[open] form");
+  await form.locator('[name="name"]').fill("renamed-key");
+  await form.locator('[name="privateKey"]').fill("  \n  ");
+  await form.getByRole("button", { name: "保存", exact: true }).click();
+  await page.locator("dialog[open]").waitFor({ state: "hidden" });
+  assert.deepEqual(saved, { name: "renamed-key", kind: "key" });
+};
 const failures = [];
 try {
   const selected = new Set(process.argv.slice(2));

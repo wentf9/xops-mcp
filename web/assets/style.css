@@ -632,6 +632,42 @@ form label textarea {
   grid-template-columns: 1fr 1fr;
   gap: 18px;
 }
+.privilege-test-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -6px 0 16px;
+}
+.privilege-test-bar button {
+  white-space: nowrap;
+}
+.privilege-test-bar p {
+  margin: 0;
+}
+.key-upload-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 8px;
+}
+.key-upload-bar button {
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.key-validate-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 16px;
+}
+.key-validate-bar button {
+  white-space: nowrap;
+}
+.key-validate-bar p {
+  margin: 0;
+  font-size: 12px;
+}
 .check {
   flex-direction: row;
   align-items: center;
@@ -1058,6 +1094,12 @@ dialog::backdrop {
   .form-grid {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+  .privilege-test-bar,
+  .key-validate-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
   }
   .form-bottom {
     display: block;

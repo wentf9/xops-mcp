@@ -16,12 +16,15 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -42,7 +45,24 @@ func run() (retErr error) {
 		return err
 	}
 	defer func() { retErr = errors.Join(retErr, os.RemoveAll(dir)) }()
-	peer, err := sshfixture.New(ctx)
+	peer, err := sshfixture.NewWithOptions(ctx, sshfixture.Options{ExecHandler: func(command string, channel cryptoSSH.Channel) {
+		output := "fixture-output"
+		switch {
+		case strings.Contains(command, "__XOPS_INTERP_END__"):
+			output = "__XOPS_INTERP__:sh\n__XOPS_INTERP_END__\n"
+		case strings.Contains(command, "__XOPS_DIALECT_POSIX__"):
+			output = "__XOPS_DIALECT_POSIX__:Linux:/bin/sh\n"
+		case strings.Contains(command, "id -u && id -un"):
+			output = "0\nroot\n"
+		}
+		if _, err := io.WriteString(channel, output); err != nil {
+			slog.Error("write SSH fixture output", "error", err)
+			return
+		}
+		if _, err := channel.SendRequest("exit-status", false, cryptoSSH.Marshal(struct{ Status uint32 }{0})); err != nil {
+			slog.Error("send SSH fixture status", "error", err)
+		}
+	}})
 	if err != nil {
 		return err
 	}

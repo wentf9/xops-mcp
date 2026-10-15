@@ -339,7 +339,7 @@ function content() {
           disabled: ["未启用", "neutral"],
           blocked: ["跳板不可用", "warning"],
         }[n.status];
-      return `<tr><td><button class="name-button" data-action="edit" data-kind="nodes" data-id="${n.id}"><span class="node-icon">⌘</span><span>${esc(n.name)}<small>${esc((n.aliases || []).join(" · ") || "无别名")}</small></span></button></td><td><span class="mono">${esc(h?.address)}:${h?.port}</span><small>${esc(i?.user)} · ${esc(h?.name)}</small></td><td>${chip(...status)}</td><td>${(n.tagIDs || []).map((id) => chip(name("tags", id))).join(" ") || "—"}</td><td>${actions("nodes", n.id, `<button data-action="test" data-id="${n.id}" ${n.disabled ? "disabled" : ""}>测试连接</button><button data-action="toggle" data-id="${n.id}">${n.disabled ? "启用" : "停用"}</button>`)}</td></tr>`;
+      return `<tr><td><button class="name-button" data-action="edit" data-kind="nodes" data-id="${n.id}"><span class="node-icon">⌘</span><span>${esc(n.name)}<small>${esc((n.aliases || []).join(" · ") || "无别名")}</small></span></button></td><td><span class="mono">${esc(h?.address)}:${h?.port}</span><small>${esc(i?.user)} · ${esc(h?.name)}</small></td><td>${chip(...status)}</td><td>${(n.tagIDs || []).map((id) => chip(name("tags", id))).join(" ") || "—"}</td><td>${actions("nodes", n.id, `<button data-action="test" data-id="${n.id}" ${n.disabled ? "disabled" : ""}>测试连接</button><button data-action="test-privilege" data-id="${n.id}" ${n.disabled ? "disabled" : ""}>测试提权</button><button data-action="toggle" data-id="${n.id}">${n.disabled ? "启用" : "停用"}</button>`)}</td></tr>`;
     });
     return `<div class="metrics"><div class="metric"><span>全部节点</span><strong>${v.nodes.length}</strong><small>统一管理的连接目标</small></div><div class="metric"><span>可用节点</span><strong class="accent">${v.nodes.filter((n) => n.status === "ready").length}</strong><small><i class="dot"></i>凭据与信任已配置</small></div><div class="metric"><span>主机</span><strong>${v.hosts.length}</strong><small>已固定公钥 ${v.hosts.filter((h) => h.hostKey).length} 台</small></div><div class="metric"><span>运行中</span><strong>${S.ops.length}</strong><small>当前准入操作</small></div></div><div class="panel"><div class="toolbar"><div class="search"><span>⌕</span><input id="search" aria-label="搜索节点" placeholder="搜索名称、地址或标签…" value="${esc(S.search)}"></div><select id="tag-filter" aria-label="按标签筛选"><option value="">全部标签</option>${v.tags.map((t) => `<option value="${esc(t.id)}" ${S.tag === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select><span class="count">${nodes.length} 个节点</span></div>${rows.length ? table(["节点", "连接目标", "状态", "标签", "操作"], rows) : empty("还没有匹配的节点", v.hosts.length && v.identities.length ? "点击“新建节点”开始配置。" : "先添加主机和登录身份，再创建节点。")}</div>`;
   }
@@ -745,6 +745,7 @@ function bindExecutionProbe(form, id, base) {
       if (!ownsDialog(form) || request !== sequence || generation !== authGeneration || captured !== JSON.stringify(connection())) return;
       const suggested = data.suggestedConfig;
       if (!suggested?.interpreter || !suggested.launchDialect || !Array.isArray(data.availableInterpreters)) throw new Error("探测结果不完整，请重试");
+      const previousExecution = JSON.stringify(executionInput(new FormData(form)));
       const supported = [...new Set(["server", ...data.availableInterpreters, suggested.interpreter])];
       interpreter.innerHTML = supported.map(value => `<option value="${esc(value)}">${esc(value)}</option>`).join("");
       interpreter.value = suggested.interpreter;
@@ -752,6 +753,8 @@ function bindExecutionProbe(form, id, base) {
       form.elements.login.value = suggested.login == null ? "" : String(suggested.login);
       updateExecutionFields(form);
       applied = true;
+      if (previousExecution !== JSON.stringify(executionInput(new FormData(form))))
+        form.dispatchEvent(new Event("executionchange"));
       status.textContent = `支持的 Shell：${data.availableInterpreters.join("、") || "server"}。已选中推荐配置 ${suggested.interpreter} / ${suggested.launchDialect}，点击保存后生效。`;
     } catch (error) {
       if (ownsDialog(form) && request === sequence && error.name !== "AbortError")
@@ -766,6 +769,204 @@ function bindExecutionProbe(form, id, base) {
     }
   };
 }
+function bindPrivilegeTest(form, id, base) {
+  const button = $("#modal-test-privilege", form);
+  const status = $("#modal-privilege-status", form);
+  if (!button || !status) return;
+  let controller, sequence = 0, requested = false;
+  const input = () => ({
+    nodeID: id || "",
+    hostID: form.elements.hostID.value,
+    identityID: form.elements.identityID.value,
+    jumpIDs: [...form.querySelectorAll('select[name="jumpID"]')].map(s => s.value).filter(Boolean),
+    sudoMode: form.elements.sudoMode.value,
+    privilegeCredentialID: form.elements.privilegeCredentialID.value,
+    execution: executionInput(new FormData(form)),
+  });
+  const cancel = () => {
+    sequence++;
+    controller?.abort();
+    controller = null;
+    button.disabled = !!form.dataset.submitting;
+    button.textContent = "测试提权能力";
+    status.textContent = "";
+    requested = false;
+  };
+  dialog.addEventListener("close", cancel, { once: true });
+  form.addEventListener("submit", cancel, true);
+  form.addEventListener("change", (e) => {
+    if (["sudoMode", "privilegeCredentialID", "hostID", "identityID", "jumpID", "interpreter", "launchDialect", "login"].includes(e.target.name)) cancel();
+  });
+  form.addEventListener("executionchange", () => {
+    // A prior test authorizes rechecking the updated Shell settings. Manual
+    // connection or privilege edits clear that intent through cancel().
+    if (requested) void test(true);
+    else cancel();
+  });
+  const test = async (automatic = false) => {
+    if (form.dataset.submitting || !ownsDialog(form)) return;
+    const body = input(), captured = JSON.stringify(body), generation = authGeneration;
+    cancel();
+    if (!body.hostID || !body.identityID) {
+      status.textContent = "请先选择主机和登录身份，并配置登录凭据及主机公钥。";
+      return;
+    }
+    requested = true;
+    const request = sequence;
+    controller = new AbortController();
+    const current = () => ownsDialog(form) && request === sequence && generation === authGeneration && captured === JSON.stringify(input());
+    button.disabled = true;
+    button.textContent = "正在测试…";
+    status.textContent = automatic ? "Shell 配置已更新，正在自动重新验证提权能力…" : "正在测试节点提权能力…";
+    try {
+      const { data } = await api("/nodes/privilege-probe", {
+        method: "POST",
+        body,
+        etag: base,
+        signal: controller.signal,
+      });
+      if (!current()) return;
+      const modeText = data.sudoMode ? ` (${data.sudoMode})` : "";
+      const userText = data.user ? `${data.user}${modeText}` : "";
+      const detail = data.detail ? ` · ${data.detail}` : "";
+      status.textContent = `提权测试成功：${userText}${detail} · ${data.elapsedMS} ms`;
+      toast(`提权测试成功 · ${data.user}${modeText} · ${data.elapsedMS} ms`);
+    } catch (error) {
+      if (current() && error.name !== "AbortError") {
+        status.textContent = error.message;
+        toast(error.message, true);
+      }
+    } finally {
+      if (ownsDialog(form) && request === sequence) {
+        controller = null;
+        button.disabled = !!form.dataset.submitting;
+        button.textContent = "测试提权能力";
+      }
+    }
+  };
+  button.onclick = () => test();
+}
+function privateKeyInput(value) {
+  return String(value ?? "").trim();
+}
+function bindCredentialKey(form) {
+  const uploadBtn = $("#upload-key-btn", form),
+    fileInput = $("#private-key-file", form),
+    fileName = $("#upload-key-filename", form),
+    textarea = form.elements.privateKey,
+    passphraseInput = form.elements.passphrase,
+    validateBtn = $("#btn-validate-key", form),
+    status = $("#key-validate-status", form);
+  if (!uploadBtn || !fileInput || !textarea) return;
+
+  let controller, reader, sequence = 0;
+  const lifecycle = new AbortController();
+  const ownsFields = () => ownsDialog(form) && form.elements.privateKey === textarea && form.elements.passphrase === passphraseInput;
+  let observedKey = privateKeyInput(textarea.value), observedPass = passphraseInput.value;
+  const cancel = () => {
+    observedKey = privateKeyInput(textarea.value);
+    observedPass = passphraseInput.value;
+    sequence++;
+    controller?.abort();
+    controller = null;
+    if (reader?.readyState === FileReader.LOADING) reader.abort();
+    reader = null;
+    validateBtn.disabled = !!form.dataset.submitting;
+    validateBtn.textContent = "验证私钥与口令";
+    status.textContent = "";
+  };
+  const dispose = () => { cancel(); lifecycle.abort(); };
+  dialog.addEventListener("close", () => { if (!ownsDialog(form)) dispose(); }, { signal: lifecycle.signal });
+  form.addEventListener("submit", cancel, { capture: true, signal: lifecycle.signal });
+  const invalidateChangedInput = () => {
+    if (privateKeyInput(textarea.value) !== observedKey || passphraseInput.value !== observedPass) cancel();
+  };
+  for (const input of [textarea, passphraseInput]) {
+    input.addEventListener("input", invalidateChangedInput, { signal: lifecycle.signal });
+    input.addEventListener("change", invalidateChangedInput, { signal: lifecycle.signal });
+  }
+  const validate = async () => {
+    if (form.dataset.submitting || !ownsFields()) return;
+    cancel();
+    const key = privateKeyInput(textarea.value), pass = passphraseInput.value;
+    if (!key) {
+      status.textContent = "请先粘贴或上传私钥内容。";
+      return;
+    }
+    const request = sequence, generation = authGeneration;
+    controller = new AbortController();
+    const current = () => ownsFields() && request === sequence && generation === authGeneration && key === privateKeyInput(textarea.value) && pass === passphraseInput.value;
+    validateBtn.disabled = true;
+    validateBtn.textContent = "正在验证…";
+    status.textContent = "正在验证私钥与口令…";
+    try {
+      const { data } = await api("/credentials/validate-key", {
+        method: "POST",
+        body: { privateKey: key, passphrase: pass },
+        signal: controller.signal,
+      });
+      if (!current()) return;
+      if (data.valid) {
+        const fp = data.fingerprint ? ` · ${data.fingerprint}` : "";
+        const type = data.keyType ? ` (${data.keyType})` : "";
+        const protText = data.protected ? "受保护私钥口令正确" : "私钥有效（未加密）";
+        status.textContent = `✓ ${protText}${type}${fp}`;
+        toast(`私钥验证成功${type}`);
+      } else {
+        status.textContent = `✗ ${data.message || "私钥验证失败"}`;
+        if (data.protected && !pass) passphraseInput.focus();
+      }
+    } catch (error) {
+      if (current() && error.name !== "AbortError") status.textContent = `✗ ${error.message}`;
+    } finally {
+      if (ownsFields() && request === sequence) {
+        controller = null;
+        validateBtn.disabled = !!form.dataset.submitting;
+        validateBtn.textContent = "验证私钥与口令";
+      }
+    }
+  };
+
+  uploadBtn.onclick = () => { if (!form.dataset.submitting) fileInput.click(); };
+  const handleFile = (file) => {
+    if (!file || form.dataset.submitting || !ownsFields()) return;
+    cancel();
+    if (file.size > 128 * 1024) {
+      status.textContent = "私钥文件大小不能超过 128 KiB。";
+      toast("私钥文件大小不能超过 128 KiB", true);
+      return;
+    }
+    const pending = new FileReader(), generation = authGeneration;
+    reader = pending;
+    const current = () => ownsFields() && reader === pending && generation === authGeneration;
+    pending.onload = () => {
+      if (!current()) return;
+      reader = null;
+      textarea.value = privateKeyInput(pending.result);
+      fileName.textContent = file.name;
+      if (form.elements.name && !form.elements.name.value) {
+        form.elements.name.value = file.name.replace(/\.(pem|key|pk8|txt|id_rsa|id_ed25519|id_ecdsa)$/i, "");
+        namingFields(form).forEach(validateNamingField);
+      }
+      validate();
+    };
+    pending.onerror = () => {
+      if (!current()) return;
+      reader = null;
+      status.textContent = "无法读取私钥文件，请重试。";
+    };
+    pending.readAsText(file);
+  };
+  fileInput.onchange = () => handleFile(fileInput.files?.[0]);
+  textarea.ondragover = e => e.preventDefault();
+  textarea.ondrop = e => { e.preventDefault(); handleFile(e.dataTransfer?.files?.[0]); };
+  validateBtn.onclick = validate;
+  passphraseInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); validate(); }
+  }, { signal: lifecycle.signal });
+  return dispose;
+}
+
 function executionInput(data) {
   const execution = {};
   for (const key of ["interpreter", "launchDialect"]) if (data.get(key)) execution[key] = data.get(key);
@@ -807,7 +1008,7 @@ function edit(kind, id) {
       "privilegeCredentialID",
       S.v.credentials.filter((c) => c.kind === "password"),
       item.privilegeCredentialID,
-    )}</div><label class="check"><input type="checkbox" name="enabled" ${id && !item.disabled ? "checked" : ""}>启用节点</label><p class="hint">启用前需配置凭据和主机公钥。未启用的跳板会阻止下游节点操作。</p>`;
+    )}</div><div class="privilege-test-bar"><button type="button" id="modal-test-privilege">测试提权能力</button><p id="modal-privilege-status" class="hint" role="status" aria-live="polite"></p></div><label class="check"><input type="checkbox" name="enabled" ${id && !item.disabled ? "checked" : ""}>启用节点</label><p class="hint">启用前需配置凭据和主机公钥。未启用的跳板会阻止下游节点操作。</p>`;
   if (kind === "nodes") html += executionFields(item.execution);
   if (kind === "credentials")
     html += `<label>类型<select aria-label="类型" name="kind"><option value="password" ${item.kind !== "key" ? "selected" : ""}>密码</option><option value="key" ${item.kind === "key" ? "selected" : ""}>SSH 私钥</option></select></label><div id="secret-fields"></div><p class="hint">${id ? "留空保留已有材料；填写后会创建新版本。" : "凭据加密保存，创建后不会回显。"}</p>`;
@@ -834,10 +1035,11 @@ function edit(kind, id) {
       };
     if (kind === "credentials") {
       body = { name: x.name, kind: x.kind };
-      if (x.password || x.privateKey || x.passphrase || !id)
+      const privateKey = privateKeyInput(x.privateKey);
+      if (x.password || privateKey || x.passphrase || !id)
         body.secret = {
           password: x.password || "",
-          privateKey: x.privateKey || "",
+          privateKey,
           passphrase: x.passphrase || "",
         };
     }
@@ -852,28 +1054,32 @@ function edit(kind, id) {
     );
   });
   if (kind === "credentials") {
+    let clearKey;
     const fields = () => {
-      $("#secret-fields", form).innerHTML =
-        form.elements.kind.value === "key"
-          ? '<label>私钥内容<textarea name="privateKey" rows="7" autocomplete="off" spellcheck="false" placeholder="粘贴 PEM / OpenSSH 私钥"></textarea></label>' +
-            field(
-              "私钥口令（可选）",
-              "passphrase",
-              "",
-              'type="password" autocomplete="new-password"',
-            )
-          : field(
-              "密码",
-              "password",
-              "",
-              'type="password" autocomplete="new-password"',
-            );
+      clearKey?.();
+      const isKey = form.elements.kind.value === "key";
+      $("#secret-fields", form).innerHTML = isKey
+        ? '<label>私钥内容<div class="key-upload-bar"><button type="button" id="upload-key-btn">上传私钥文件</button><input type="file" id="private-key-file" style="display:none" accept=".pem,.key,.pk8,.id_rsa,.id_ed25519,.id_ecdsa,text/plain,*"><span id="upload-key-filename" class="muted"></span></div><textarea name="privateKey" rows="7" autocomplete="off" spellcheck="false" placeholder="粘贴 PEM / OpenSSH 私钥，或点击上方按钮上传私钥文件"></textarea></label><div class="key-validate-bar"><button type="button" id="btn-validate-key">验证私钥与口令</button><p id="key-validate-status" class="hint" role="status" aria-live="polite"></p></div>' +
+          field(
+            "私钥口令（受保护私钥必填）",
+            "passphrase",
+            "",
+            'type="password" autocomplete="new-password"',
+          )
+        : field(
+            "密码",
+            "password",
+            "",
+            'type="password" autocomplete="new-password"',
+          );
+      clearKey = isKey ? bindCredentialKey(form) : null;
     };
     fields();
     form.elements.kind.onchange = fields;
   }
   if (kind === "nodes") {
     bindExecutionProbe(form, id, base);
+    bindPrivilegeTest(form, id, base);
     $("#add-jump", form).onclick = () =>
       $("#jumps", form).insertAdjacentHTML("beforeend", jumpRow(""));
     $("#jumps", form).onclick = (e) => {
@@ -1200,6 +1406,15 @@ document.addEventListener("click", async (e) => {
         body: {},
       });
       toast(`SSH 连接成功 · ${data.elapsedMS} ms`);
+    }
+    if (action === "test-privilege") {
+      const { data } = await api("/nodes/" + id + "/test-privilege", {
+        method: "POST",
+        body: {},
+      });
+      const modeText = data.sudoMode ? ` (${data.sudoMode})` : "";
+      const userText = data.user ? ` · ${data.user}${modeText}` : "";
+      toast(`提权测试成功${userText} · ${data.elapsedMS} ms`);
     }
     if (action === "toggle") {
       const { id: ignored, status, ...body } = find("nodes", id);

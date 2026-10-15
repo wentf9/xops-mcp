@@ -3,14 +3,19 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/wentf9/xops-cli/core/mcp/ports"
+	"github.com/wentf9/xops-cli/core/ssh"
 	"github.com/wentf9/xops-mcp/internal/adapters/xops"
 	"github.com/wentf9/xops-mcp/internal/adminauth"
 	"github.com/wentf9/xops-mcp/internal/secure"
+	"github.com/wentf9/xops-mcp/internal/service"
 	"github.com/wentf9/xops-mcp/internal/storage"
 	cryptoSSH "golang.org/x/crypto/ssh"
 )
@@ -216,4 +221,201 @@ func (s *Server) testNode(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, 200, map[string]any{"connected": true, "elapsedMS": time.Since(start).Milliseconds()})
 }
+func (s *Server) testNodePrivilege(w http.ResponseWriter, r *http.Request) {
+	rev, ok := expected(w, r)
+	if !ok {
+		return
+	}
+	release, ok := s.probeSlot(w)
+	if !ok {
+		return
+	}
+	defer release()
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	view, err := s.editor.Service.Coordinator.Resolve(ctx, ports.ResolveRequest{Selectors: []string{r.PathValue("id")}})
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	if view.Revision != strconvRevision(rev) {
+		failure(w, storage.ErrConflict)
+		return
+	}
+	binding, err := ports.Bind(view, "administrator", "admin.privilege_test", map[string]string{"nodeID": r.PathValue("id")})
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	operationID := secure.ID()
+	event := ports.AuditEvent{OperationID: operationID, Tool: "admin.privilege_test", NodeID: r.PathValue("id"), Decision: "administrator", Outcome: "intent", RiskLevel: "safe"}
+	if err := s.store.Append(ctx, event); err != nil {
+		failure(w, err)
+		return
+	}
+	permit, err := s.tracker.Enter(ctx, ports.Admission{OperationID: operationID, Binding: binding, Snapshot: view, Phase: ports.Inspect})
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	start := time.Now()
+	res, err := s.probes.TestPrivilege(ctx, permit, r.PathValue("id"))
+	err = errors.Join(err, permit.Close())
+	event.Outcome = "executed"
+	if err != nil {
+		event.Outcome = "error"
+	}
+	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer stop()
+	auditErr := s.store.Append(cleanup, event)
+	if err != nil {
+		if strings.Contains(err.Error(), "SSH connection failed") {
+			problem(w, 502, "connection_failed", "SSH 连接失败，请检查地址、凭据和主机密钥")
+			return
+		}
+		if strings.Contains(err.Error(), "未配置提权方式") {
+			problem(w, 422, "privilege_not_configured", err.Error())
+			return
+		}
+		problem(w, 502, "privilege_failed", err.Error())
+		return
+	}
+	if auditErr != nil {
+		failure(w, auditErr)
+		return
+	}
+	respond(w, 200, map[string]any{
+		"escalated": res.Escalated,
+		"sudoMode":  res.SudoMode,
+		"user":      res.User,
+		"detail":    res.Detail,
+		"elapsedMS": time.Since(start).Milliseconds(),
+	})
+}
 func strconvRevision(revision uint64) string { return strconv.FormatUint(revision, 10) }
+
+type privilegeProbeInput struct {
+	NodeID                string               `json:"nodeID,omitempty"`
+	HostID                string               `json:"hostID"`
+	IdentityID            string               `json:"identityID"`
+	JumpIDs               []string             `json:"jumpIDs"`
+	SudoMode              string               `json:"sudoMode"`
+	PrivilegeCredentialID string               `json:"privilegeCredentialID"`
+	Execution             *ssh.ExecutionConfig `json:"execution,omitempty"`
+}
+
+func (s *Server) probePrivilege(w http.ResponseWriter, r *http.Request) {
+	revision, ok := expected(w, r)
+	if !ok {
+		return
+	}
+	var input privilegeProbeInput
+	if !decode(w, r, &input) {
+		return
+	}
+	release, ok := s.probeSlot(w)
+	if !ok {
+		return
+	}
+	defer release()
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	v, err := s.editor.Service.Inventory(ctx)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	if v.Revision != revision {
+		failure(w, storage.ErrConflict)
+		return
+	}
+	if s.editor.Service.Coordinator.Pending() {
+		failure(w, service.ErrPending)
+		return
+	}
+	id := input.NodeID
+	node, exists := v.Nodes[id]
+	if id != "" && !exists {
+		failure(w, storage.ErrNotFound)
+		return
+	}
+	if id == "" {
+		id = secure.ID()
+		node = storage.Node{ID: id, Name: "probe-" + id}
+	}
+	node.HostID, node.IdentityID = input.HostID, input.IdentityID
+	node.JumpIDs = slices.Clone(input.JumpIDs)
+	node.Disabled = false
+	node.SudoMode = input.SudoMode
+	node.PrivilegeCredentialID = input.PrivilegeCredentialID
+	node.Execution = input.Execution.Clone()
+	v.Nodes[id] = node
+
+	view, sources, err := xops.Snapshot(v)
+	if err != nil {
+		failure(w, fmt.Errorf("%w: %w", service.ErrInvalid, err))
+		return
+	}
+	target := view.Targets[id]
+	for _, hop := range target.Plan.Hops {
+		if v.Nodes[hop.NodeID].Disabled {
+			failure(w, ports.ErrNodeDisabled)
+			return
+		}
+	}
+	operationID := secure.ID()
+	event := ports.AuditEvent{OperationID: operationID, Tool: "admin.privilege_probe", NodeID: input.NodeID, Decision: "administrator", Outcome: "intent", RiskLevel: "safe"}
+	if err := s.store.Append(ctx, event); err != nil {
+		failure(w, err)
+		return
+	}
+	start := time.Now()
+	res, probeErr := s.probes.ProbePrivilege(ctx, target.Plan, target.Execution, sources)
+	event.Outcome = "executed"
+	if probeErr != nil {
+		event.Outcome = "error"
+	}
+	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer stop()
+	auditErr := s.store.Append(cleanup, event)
+	if probeErr != nil {
+		if errors.Is(probeErr, context.Canceled) || errors.Is(probeErr, context.DeadlineExceeded) {
+			failure(w, probeErr)
+			return
+		}
+		if strings.Contains(probeErr.Error(), "SSH connection failed") {
+			problem(w, 502, "connection_failed", "SSH 连接失败，请检查地址、凭据和主机密钥")
+			return
+		}
+		if strings.Contains(probeErr.Error(), "未配置提权方式") {
+			problem(w, 422, "privilege_not_configured", probeErr.Error())
+			return
+		}
+		problem(w, 502, "privilege_failed", probeErr.Error())
+		return
+	}
+	if auditErr != nil {
+		failure(w, auditErr)
+		return
+	}
+	current, err := s.editor.Service.Inventory(ctx)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	if current.Revision != revision {
+		failure(w, storage.ErrConflict)
+		return
+	}
+	if s.editor.Service.Coordinator.Pending() {
+		failure(w, service.ErrPending)
+		return
+	}
+	respond(w, 200, map[string]any{
+		"escalated": res.Escalated,
+		"sudoMode":  res.SudoMode,
+		"user":      res.User,
+		"detail":    res.Detail,
+		"elapsedMS": time.Since(start).Milliseconds(),
+	})
+}

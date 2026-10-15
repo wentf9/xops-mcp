@@ -23,10 +23,12 @@ import (
 	"github.com/wentf9/xops-cli/core/mcp/ports"
 	"github.com/wentf9/xops-cli/core/mcp/state"
 	"github.com/wentf9/xops-cli/core/ssh"
+	"github.com/wentf9/xops-mcp/internal/adapters/xops"
 	"github.com/wentf9/xops-mcp/internal/adminauth"
 	"github.com/wentf9/xops-mcp/internal/config"
 	"github.com/wentf9/xops-mcp/internal/mcpauth"
 	"github.com/wentf9/xops-mcp/internal/operations"
+	"github.com/wentf9/xops-mcp/internal/secure"
 	"github.com/wentf9/xops-mcp/internal/service"
 	"github.com/wentf9/xops-mcp/internal/storage"
 )
@@ -38,6 +40,8 @@ type Store interface {
 }
 type Probes interface {
 	TestConnection(context.Context, ports.Permit, string) error
+	TestPrivilege(context.Context, ports.Permit, string) (*xops.PrivilegeTestResult, error)
+	ProbePrivilege(context.Context, ssh.ConnectionPlan, *ssh.ExecutionConfig, []storage.Source) (*xops.PrivilegeTestResult, error)
 	ProbeExecution(context.Context, ssh.ConnectionPlan, []storage.Source) (*ssh.ProbeResult, error)
 }
 type Options struct {
@@ -161,13 +165,16 @@ func (s *Server) Handler(assets http.Handler) http.Handler {
 		mux.Handle("PUT /api/v1/"+kind+"/{id}", s.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { s.save(w, r, kind) })))
 		mux.Handle("DELETE /api/v1/"+kind+"/{id}", s.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { s.remove(w, r, kind) })))
 	}
+	mux.Handle("POST /api/v1/credentials/validate-key", s.authorize(http.HandlerFunc(s.validateCredentialKey)))
 	mux.Handle("PUT /api/v1/policy", s.authorize(http.HandlerFunc(s.policy)))
 	mux.Handle("POST /api/v1/hosts/{id}/probe", s.authorize(http.HandlerFunc(s.probeHost)))
 	mux.Handle("POST /api/v1/hosts/{id}/key-preview", s.authorize(http.HandlerFunc(s.previewHostKey)))
 	mux.Handle("POST /api/v1/hosts/{id}/trust", s.authorize(http.HandlerFunc(s.trustHost)))
 	mux.Handle("DELETE /api/v1/hosts/{id}/trust", s.authorize(http.HandlerFunc(s.trustHost)))
 	mux.Handle("POST /api/v1/nodes/execution-probe", s.authorize(http.HandlerFunc(s.probeExecution)))
+	mux.Handle("POST /api/v1/nodes/privilege-probe", s.authorize(http.HandlerFunc(s.probePrivilege)))
 	mux.Handle("POST /api/v1/nodes/{id}/test", s.authorize(http.HandlerFunc(s.testNode)))
+	mux.Handle("POST /api/v1/nodes/{id}/test-privilege", s.authorize(http.HandlerFunc(s.testNodePrivilege)))
 	mux.Handle("GET /api/v1/audit", s.authorize(http.HandlerFunc(s.audit)))
 	mux.Handle("GET /api/v1/operations", s.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		respond(w, 200, map[string]any{"operations": s.tracker.List()})
@@ -309,7 +316,18 @@ func failure(w http.ResponseWriter, err error) {
 	case errors.Is(err, service.ErrPending), errors.Is(err, state.ErrUpdating):
 		problem(w, 503, "publication_pending", "当前有配置等待应用，请刷新状态后重试应用，勿重复提交")
 	case errors.Is(err, service.ErrInvalid):
-		problem(w, 422, "invalid_configuration", err.Error())
+		switch {
+		case errors.Is(err, secure.ErrPassphraseRequired):
+			problem(w, 422, "passphrase_required", "该私钥受密码保护，请输入私钥口令")
+		case errors.Is(err, secure.ErrPassphraseIncorrect):
+			problem(w, 422, "passphrase_incorrect", "私钥口令不正确")
+		case errors.Is(err, secure.ErrPassphraseUnnecessary):
+			problem(w, 422, "passphrase_unnecessary", "私钥未受密码保护，请清空私钥口令")
+		case errors.Is(err, secure.ErrPrivateKeyInvalid):
+			problem(w, 422, "invalid_key", "私钥格式不正确，无法解析")
+		default:
+			problem(w, 422, "invalid_configuration", err.Error())
+		}
 	case errors.Is(err, ports.ErrNodeDisabled):
 		problem(w, 409, "node_disabled", "节点或上游跳板尚未启用")
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
