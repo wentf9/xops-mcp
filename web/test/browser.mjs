@@ -63,6 +63,7 @@ try {
   });
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
+    locale: "zh-CN",
     // The fixture generates its own isolated certificate, never a deployed key.
     ignoreHTTPSErrors: true,
   });
@@ -121,6 +122,15 @@ try {
   await page.getByRole("heading", { name: "节点总览", exact: true }).waitFor();
   const token = async () => page.evaluate(() => sessionStorage.getItem("xops.admin.token:" + new URL("api/v1/", document.baseURI).href));
   assert.equal((await token()).split(".").length, 3);
+  const originalLogin = await token();
+  await page.getByLabel("控制台语言", { exact: true }).selectOption("en");
+  await page.getByRole("heading", { name: "Nodes", exact: true }).waitFor();
+  assert.equal(await token(), originalLogin);
+  await page.reload();
+  await page.getByRole("heading", { name: "Nodes", exact: true }).waitFor();
+  await page.getByLabel("Console language", { exact: true }).selectOption("zh-CN");
+  await page.getByRole("heading", { name: "节点总览", exact: true }).waitFor();
+  assert.equal(await token(), originalLogin);
   assert.equal((await context.cookies(info.url)).filter(cookie => cookie.name.startsWith("xops_admin_")).length, 0);
   for (const url of [
     info.mcpURL + "/console/api/v1/inventory",

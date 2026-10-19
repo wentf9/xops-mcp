@@ -50,10 +50,12 @@ func (s *Server) validateCredentialKey(w http.ResponseWriter, r *http.Request) {
 		default:
 			res.Message = err.Error()
 		}
+		res.Message = localizedMessage(w, res.Message)
 		respond(w, 200, res)
 		return
 	}
 	res.Valid = true
 	res.Message = "私钥与口令验证通过"
+	res.Message = localizedMessage(w, res.Message)
 	respond(w, 200, res)
 }

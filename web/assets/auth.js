@@ -1,3 +1,4 @@
+import { t as tr, locale } from "./i18n.js";
 // Compact JWE (RFC 7516): RSA-OAEP-256 plus A256GCM. Use Web Crypto when
 // available and a pinned, embedded implementation for ordinary HTTP origins.
 // Every key, nonce and OAEP seed comes from the browser's secure random source.
@@ -9,28 +10,28 @@ function base64url(bytes) {
 }
 function decodeBase64url(value) {
   if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value))
-    throw new Error("密码加密公钥不正确");
+    throw new Error(tr("密码加密公钥不正确"));
   return Uint8Array.from(atob(value.replace(/-/g, "+").replace(/_/g, "/")), char => char.charCodeAt(0));
 }
 function randomBytes(length) {
   if (typeof globalThis.crypto?.getRandomValues !== "function")
-    throw new Error("浏览器不支持安全随机数，请更新浏览器");
+    throw new Error(tr("浏览器不支持安全随机数，请更新浏览器"));
   return crypto.getRandomValues(new Uint8Array(length));
 }
 export async function encryptRequest(apiRoot, action, data, token = "") {
-  const headers = { Accept: "application/json" };
+  const headers = { Accept: "application/json", "Accept-Language": locale };
   if (action === "password" && token) headers.Authorization = "Bearer " + token;
   const response = await fetch(new URL("auth/challenge?action=" + action, apiRoot), {
     headers, credentials: "omit", cache: "no-store",
   });
   const parameters = await response.json();
-  if (!response.ok) throw new Error(parameters.message || "无法获取密码加密参数");
+  if (!response.ok) throw new Error(parameters.message || tr("无法获取密码加密参数"));
   const jwk = parameters.publicKey;
   if (!jwk || jwk.kty !== "RSA" || jwk.alg !== "RSA-OAEP-256" || !jwk.kid)
-    throw new Error("密码加密公钥不正确");
+    throw new Error(tr("密码加密公钥不正确"));
   const modulus = decodeBase64url(jwk.n), exponent = decodeBase64url(jwk.e);
   if (modulus.length < 256 || modulus.length > 512 || exponent.length > 4)
-    throw new Error("密码加密公钥长度不正确");
+    throw new Error(tr("密码加密公钥长度不正确"));
   const rawKey = randomBytes(32), iv = randomBytes(12);
   const plaintext = encoder.encode(JSON.stringify({ challenge: parameters.challenge, data }));
   try {

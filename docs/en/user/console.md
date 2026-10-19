@@ -2,6 +2,12 @@
 
 [简体中文](../../user/console.md) · [User guide](README.md)
 
+## Choose a language
+
+The console supports Simplified Chinese and English. On first use it follows the first supported browser language, falling back to English for other languages. Use the language selector at the top right to choose 中文 or English. The page reloads while keeping your login and current page.
+
+The choice is saved as a browser preference for this console address. You can also add `?lang=zh-CN` or `?lang=en` to the console URL; the URL takes priority. If local storage is blocked, the current URL still preserves the selection. Save or discard unfinished edits before switching. The console preserves your input and asks you to finish editing if there are unsaved values or a submission in progress. Node names, tags, and other custom content are never translated.
+
 ## Administrator login
 
 At first use, enter an administrator username, password and setup code. Passwords require 12–72 UTF-8 bytes, without line breaks or NUL. Common Chinese characters usually use 3 bytes each. Confirmation must match exactly.

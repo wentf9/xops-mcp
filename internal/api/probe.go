@@ -288,7 +288,7 @@ func (s *Server) testNodePrivilege(w http.ResponseWriter, r *http.Request) {
 		"escalated": res.Escalated,
 		"sudoMode":  res.SudoMode,
 		"user":      res.User,
-		"detail":    res.Detail,
+		"detail":    localizedMessage(w, res.Detail),
 		"elapsedMS": time.Since(start).Milliseconds(),
 	})
 }
@@ -415,7 +415,7 @@ func (s *Server) probePrivilege(w http.ResponseWriter, r *http.Request) {
 		"escalated": res.Escalated,
 		"sudoMode":  res.SudoMode,
 		"user":      res.User,
-		"detail":    res.Detail,
+		"detail":    localizedMessage(w, res.Detail),
 		"elapsedMS": time.Since(start).Milliseconds(),
 	})
 }

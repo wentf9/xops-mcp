@@ -1,5 +1,6 @@
+import { t as tr } from "./i18n.js";
 export const nameHint =
-  "允许各语言的字母或文字、数字、下划线和连字符，长度为 1–256 字节，不能包含空白或其他符号。";
+  tr("允许各语言的字母或文字、数字、下划线和连字符，长度为 1–256 字节，不能包含空白或其他符号。");
 
 const pattern = /^(?:\p{L}[\p{Mn}\p{Mc}]*|[\p{Nd}_-])+$/u;
 const invisible = /\p{Default_Ignorable_Code_Point}/u;

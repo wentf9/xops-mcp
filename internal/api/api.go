@@ -199,6 +199,8 @@ func (s *Server) Handler(assets http.Handler) http.Handler {
 // Protect also wraps embedded assets so Host validation precedes login/setup.
 func (s *Server) Protect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Language", managementLocale(r.Header.Get("Accept-Language")))
+		w.Header().Add("Vary", "Accept-Language")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -261,7 +263,7 @@ func respond(w http.ResponseWriter, status int, value any) {
 	}
 }
 func problem(w http.ResponseWriter, status int, code, message string) {
-	respond(w, status, map[string]string{"code": code, "message": message})
+	respond(w, status, map[string]string{"code": code, "message": localizedMessage(w, message)})
 }
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 	if strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/json" {
@@ -341,7 +343,7 @@ func finish(w http.ResponseWriter, result service.EditResult, err error) {
 		var audit *guardrail.ExecutedPostAuditError
 		if errors.As(err, &audit) {
 			w.Header().Set("ETag", etag(result.Revision))
-			respond(w, 202, map[string]any{"revision": result.Revision, "id": result.ID, "warning": "配置已应用，但审计写入失败，请勿重复提交"})
+			respond(w, 202, map[string]any{"revision": result.Revision, "id": result.ID, "warning": localizedMessage(w, "配置已应用，但审计写入失败，请勿重复提交")})
 			return
 		}
 		failure(w, err)

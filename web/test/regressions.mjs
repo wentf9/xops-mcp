@@ -67,7 +67,7 @@ async function bounded(promise) {
   }
 }
 async function fixture() {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ locale: "zh-CN" });
   context.setDefaultTimeout(5000);
   const page = await context.newPage();
   const errors = [];
@@ -128,6 +128,8 @@ async function fixture() {
       "/": ["index.html", "text/html"],
       "/assets/app.js": ["app.js", "text/javascript"],
       "/assets/auth.js": ["auth.js", "text/javascript"],
+      "/assets/i18n.js": ["i18n.js", "text/javascript"],
+      "/assets/en.js": ["en.js", "text/javascript"],
       "/assets/naming.js": ["naming.js", "text/javascript"],
       "/assets/style.css": ["style.css", "text/css"],
     }[path];
@@ -1833,6 +1835,116 @@ cases.key_whitespace_edit_preserves_material = async ({ page, state }) => {
   await form.getByRole("button", { name: "保存", exact: true }).click();
   await page.locator("dialog[open]").waitFor({ state: "hidden" });
   assert.deepEqual(saved, { name: "renamed-key", kind: "key" });
+};
+cases.i18n_english_pages = async ({ page, state }) => {
+  populate(state);
+  state.inventory.nodes[0].name = "节点总览";
+  state.inventory.hosts[0].name = "主机与信任";
+  state.inventory.credentials.push({ id: "credential", name: "凭据", kind: "key" });
+  state.inventory.tags[0].name = "标签";
+  state.routes.set("/api/v1/audit", route => json(route, { entries: [auditEntry(1, "a", "completed")], next: 0 }));
+  state.routes.set("/api/v1/mcp-tokens", route => json(route, { tokens: [{ id: "token", name: "中文Token", enabled: true, version: 1, prefix: "prefix", nodeScope: "all", createdAt: 1 }] }));
+  const checkEnglish = async () => {
+    const text = (await page.locator("body").innerText()).replace(/节点总览|主机与信任|凭据|标签|中文Token|中文/g, "");
+    assert.equal(/\p{Script=Han}/u.test(text), false, "Chinese interface text remains: " + text);
+  };
+  await page.goto(origin + "/?lang=en#nodes");
+  await page.getByRole("heading", { name: "Nodes", exact: true }).waitFor();
+  assert.equal(await page.locator("html").getAttribute("lang"), "en");
+  assert.equal(await page.getByRole("button", { name: "节点总览", exact: false }).count(), 1);
+  await checkEnglish();
+  for (const title of ["Hosts & trust", "Login identities", "Credentials", "Tags", "Operation policy", "Active operations", "Audit log", "MCP Token", "Account"]) {
+    await navigate(page, title);
+    if (title === "MCP Token") await page.getByText("中文Token", { exact: true }).waitFor();
+    if (title === "Audit log") await page.locator("#audit-list").getByText("Transfer completed", { exact: true }).waitFor();
+    await checkEnglish();
+  }
+  await navigate(page, "Nodes");
+  await page.getByRole("button", { name: "New Node", exact: false }).click();
+  let form = page.locator("dialog[open] form");
+  await form.getByRole("heading", { name: "New Node", exact: true }).waitFor();
+  await checkEnglish();
+  await form.locator('[name="name"]').fill("invalid name");
+  assert.match(await form.locator('[name="name"]').evaluate(input => input.validationMessage), /UTF-8 bytes/);
+  await form.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.locator("dialog[open]").waitFor({ state: "hidden" });
+  await navigate(page, "Credentials");
+  await page.getByRole("button", { name: "New Credentials", exact: false }).click();
+  form = page.locator("dialog[open] form");
+  await form.locator('[name="kind"]').selectOption("key");
+  await checkEnglish();
+  let acceptedLanguage;
+  state.routes.set("/api/v1/credentials/validate-key", route => {
+    acceptedLanguage = route.request().headers()["accept-language"];
+    return json(route, { valid: false, protected: false, message: "Invalid or unsupported private key format" });
+  });
+  await form.locator('[name="privateKey"]').fill("invalid-key");
+  await form.getByRole("button", { name: "Validate key and passphrase", exact: true }).click();
+  await form.locator("#key-validate-status").filter({ hasText: "Invalid or unsupported private key format" }).waitFor();
+  assert.equal(acceptedLanguage, "en");
+  await checkEnglish();
+  await page.screenshot({ path: resolve(artifacts, "console-en-key.png"), fullPage: true });
+  await form.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.locator("dialog[open]").waitFor({ state: "hidden" });
+  await navigate(page, "Operation policy");
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: resolve(artifacts, "console-en-mobile.png"), fullPage: true });
+};
+cases.i18n_switch_and_persist = async ({ page, state }) => {
+  populate(state);
+  await page.goto(origin + "/#tags");
+  await page.getByRole("heading", { name: "标签", exact: true }).waitFor();
+  await page.getByLabel("控制台语言", { exact: true }).selectOption("en");
+  await page.getByRole("heading", { name: "Tags", exact: true }).waitFor();
+  assert.equal(await page.locator("html").getAttribute("lang"), "en");
+  assert.equal(new URL(page.url()).hash, "#tags");
+  // The saved preference applies even when the explicit language URL is removed.
+  await page.goto(origin + "/#hosts");
+  await page.getByRole("heading", { name: "Hosts & trust", exact: true }).waitFor();
+  await page.getByLabel("Console language", { exact: true }).selectOption("zh-CN");
+  await page.getByRole("heading", { name: "主机与信任", exact: true }).waitFor();
+  assert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
+};
+cases.i18n_browser_language_and_storage_failure = async ({ page, context, state }) => {
+  populate(state);
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "languages", { get: () => ["fr-FR", "en-US"] });
+    Object.defineProperty(window, "localStorage", { get() { throw new DOMException("Storage blocked", "SecurityError"); } });
+  });
+  await page.goto(origin + "/#nodes");
+  await page.getByRole("heading", { name: "Nodes", exact: true }).waitFor();
+  await page.getByLabel("Console language", { exact: true }).selectOption("zh-CN");
+  await page.getByRole("heading", { name: "节点总览", exact: true }).waitFor();
+  await page.reload();
+  await page.getByRole("heading", { name: "节点总览", exact: true }).waitFor();
+};
+cases.i18n_preserves_unsaved_policy = async ({ page, state }) => {
+  populate(state);
+  await page.goto(origin + "/#policy");
+  await page.getByRole("heading", { name: "操作策略", exact: true }).waitFor();
+  await page.locator('[name="protectedPaths"]').fill("/unsaved-path");
+  await page.getByLabel("控制台语言", { exact: true }).selectOption("en");
+  await page.locator("#notices").filter({ hasText: "请先保存或放弃当前编辑" }).waitFor();
+  assert.equal(await page.locator('[name="protectedPaths"]').inputValue(), "/unsaved-path");
+  assert.equal(await page.getByLabel("控制台语言", { exact: true }).inputValue(), "zh-CN");
+  assert.equal(new URL(page.url()).search, "");
+};
+cases.i18n_login = async ({ page, state }) => {
+  state.routes.set("/api/v1/auth/session", route => json(route, { authenticated: false, setupRequired: false }));
+  state.routes.set("/api/v1/auth/login", route => {
+    assert.equal(route.request().headers()["accept-language"], "en");
+    encryptedBody(route);
+    return json(route, { code: "invalid_login", message: "Incorrect username or password" }, 401);
+  });
+  await page.goto(origin + "/?lang=en");
+  await page.getByRole("heading", { name: "Welcome back", exact: true }).waitFor();
+  await page.getByLabel("Username", { exact: true }).fill("operator");
+  await page.getByLabel("Password", { exact: true }).fill("synthetic-password");
+  await page.getByRole("button", { name: "Sign in", exact: false }).click();
+  await page.locator(".form-error").filter({ hasText: "Incorrect username or password" }).waitFor();
+  const text = (await page.locator("body").innerText()).replace("中文", "");
+  assert.equal(/\p{Script=Han}/u.test(text), false);
 };
 const failures = [];
 try {

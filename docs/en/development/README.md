@@ -9,6 +9,7 @@ Development material lives here. Installation and operation belong in the [user 
 - [Interface decoupling](interface-decoupling.md): state, admission, credential and transfer contracts.
 - [Management API](api.md): routes, errors and concurrent edits.
 - [Authentication contracts](admin-auth.md): JWT, JWE, TLS and frontend authentication state.
+- [Internationalization](i18n.md): Chinese/English catalogs, language selection, API messages, and validation.
 - [MCP client authentication](mcp-auth.md): tokens, client identity, lifecycle and session/task isolation.
 - [Storage and runtime constraints](storage.md): migrations, transactions, archives and resource ownership.
 - [Dependency baseline](reuse-baseline.md): pin and evidence boundaries.

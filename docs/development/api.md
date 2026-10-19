@@ -46,3 +46,7 @@
 `POST /credentials/validate-key` 接收 `{ "privateKey": "...", "passphrase": "..." }`，对提供的私钥内容及口令进行解密与有效性验证，不修改库存及版本号。返回 `{ "valid": true/false, "protected": true/false, "keyType": "...", "fingerprint": "...", "message": "..." }`。对于受保护私钥（如带有口令的 OpenSSH / PEM 密钥），若未提供口令或口令不正确，返回对应提示与保护状态；未受保护私钥若填写口令亦会给出警告。凭据保存（`POST/PUT /credentials`）接口在入库前亦会执行此验证，口令缺失或错误返回 422。
 
 浏览器上传、验证和保存统一去除私钥内容两端的空白，私钥口令保持原文。私钥验证结果绑定发起请求时规范化后的私钥、口令、凭据类型与认证状态；有效输入变化、重新上传、提交或关闭弹窗时取消验证并丢弃旧结果。仅失焦且内容未变时保留验证结果。
+
+## 消息语言
+
+管理 API 根据 `Accept-Language` 的语言及质量权重选择 `zh-CN` 或 `en`，支持区域变体；缺少或不支持的语言保持默认中文，以兼容已有 API 客户端。响应包含 `Content-Language` 和 `Vary: Accept-Language`。错误 `code`、HTTP 状态、字段名、审计内容和业务数据保持不变，仅翻译服务拥有的 `message`、`warning` 和提权 `detail`。前端显式传递当前语言，包括 JWE 挑战请求。词典与扩展规则见 [i18n](i18n.md)。
