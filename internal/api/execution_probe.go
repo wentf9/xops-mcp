@@ -68,7 +68,7 @@ func (s *Server) probeExecution(w http.ResponseWriter, r *http.Request) {
 	// An explicit admin inspection may test a disabled or new target. It never
 	// enables the stored node. Disabled transit nodes remain unavailable.
 	node.Disabled, node.Execution = false, nil
-	node.SudoMode, node.PrivilegeCredentialID = "none", ""
+	node.SudoMode, node.PrivilegeCredentialID, node.PasswordPromptPattern = "none", "", ""
 	v.Nodes[id] = node
 	view, sources, err := xops.Snapshot(v)
 	if err != nil {
@@ -98,12 +98,16 @@ func (s *Server) probeExecution(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
+	var diags []xops.DiagnosticEvent
+	if result != nil {
+		diags = result.Diagnostics
+	}
 	if probeErr != nil {
 		if errors.Is(probeErr, context.Canceled) || errors.Is(probeErr, context.DeadlineExceeded) {
 			failure(w, probeErr)
 			return
 		}
-		problem(w, 502, "execution_probe_failed", "无法探测远端 Shell，请检查凭据、主机公钥、网络及远端诊断命令权限")
+		problemWithDiagnostics(w, 502, "execution_probe_failed", "无法探测远端 Shell，请检查凭据、主机公钥、网络及远端诊断命令权限", diags)
 		return
 	}
 	// Never present a recommendation from an inventory that changed during I/O.

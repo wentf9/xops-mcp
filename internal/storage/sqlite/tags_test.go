@@ -10,7 +10,7 @@ import (
 
 func restoreLegacyTagSchema(t *testing.T, s *Store) {
 	t.Helper()
-	_, err := s.db.ExecContext(t.Context(), `ALTER TABLE nodes DROP COLUMN execution; DROP TABLE mcp_tokens; DROP TABLE node_tags; DROP TABLE tags;
+	_, err := s.db.ExecContext(t.Context(), `ALTER TABLE nodes DROP COLUMN password_prompt_pattern; ALTER TABLE nodes DROP COLUMN execution; DROP TABLE mcp_tokens; DROP TABLE node_tags; DROP TABLE tags;
 CREATE TABLE tags (name TEXT PRIMARY KEY);
 CREATE TABLE node_tags (node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
  tag TEXT NOT NULL REFERENCES tags(name), PRIMARY KEY(node_id,tag));`)

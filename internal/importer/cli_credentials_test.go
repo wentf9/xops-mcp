@@ -119,3 +119,60 @@ func TestCLIInlineCredentialsHaveValidStableNamesAndReferences(t *testing.T) {
 		t.Fatal("import report disclosed secret material")
 	}
 }
+
+func TestCLIPasswordPromptPatternImport(t *testing.T) {
+	s, vault, _ := testutil.Store(t)
+	base, err := s.Load(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := yaml.Marshal(map[string]any{
+		"schema_version":          1,
+		"password_prompt_pattern": `.*\[sudo\] password:.*`,
+		"hosts": map[string]any{
+			"host": map[string]any{"address": "127.0.0.1"},
+		},
+		"identities": map[string]any{
+			"login": map[string]any{"user": "fixture"},
+		},
+		"nodes": map[string]any{
+			"node-default": map[string]any{
+				"host_ref":     "host",
+				"identity_ref": "login",
+				"sudo_mode":    "sudo",
+			},
+			"node-override": map[string]any{
+				"host_ref":                "host",
+				"identity_ref":            "login",
+				"sudo_mode":               "su",
+				"password_prompt_pattern": `.*Password:.*`,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, _, err := importer.Decode(data, "xops-cli")
+	if err != nil {
+		t.Fatalf("decode xops-cli with password prompt pattern failed: %v", err)
+	}
+	candidate, _, err := importer.Plan(base, doc, vault, importer.Options{})
+	if err != nil {
+		t.Fatalf("plan failed: %v", err)
+	}
+	var defPattern, overPattern string
+	for _, n := range candidate.Nodes {
+		switch n.Name {
+		case "node-default":
+			defPattern = n.PasswordPromptPattern
+		case "node-override":
+			overPattern = n.PasswordPromptPattern
+		}
+	}
+	if defPattern != `.*\[sudo\] password:.*` {
+		t.Fatalf("expected inherited pattern %q, got %q", `.*\[sudo\] password:.*`, defPattern)
+	}
+	if overPattern != `.*Password:.*` {
+		t.Fatalf("expected overridden pattern %q, got %q", `.*Password:.*`, overPattern)
+	}
+}

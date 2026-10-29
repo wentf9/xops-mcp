@@ -128,7 +128,7 @@ func saveInventory(ctx context.Context, tx *sql.Tx, expected uint64, v storage.I
 		if err != nil {
 			return fmt.Errorf("encode node execution: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO nodes(id,name,host_id,identity_id,jump_id,sudo_mode,privilege_credential_id,disabled,execution) VALUES(?,?,?,?,?,?,?,?,?)", n.ID, n.Name, n.HostID, n.IdentityID, nil, n.SudoMode, nullable(n.PrivilegeCredentialID), n.Disabled, string(execution)); err != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO nodes(id,name,host_id,identity_id,jump_id,sudo_mode,privilege_credential_id,password_prompt_pattern,disabled,execution) VALUES(?,?,?,?,?,?,?,?,?,?)", n.ID, n.Name, n.HostID, n.IdentityID, nil, n.SudoMode, nullable(n.PrivilegeCredentialID), n.PasswordPromptPattern, n.Disabled, string(execution)); err != nil {
 			return err
 		}
 		for position, jump := range n.JumpIDs {

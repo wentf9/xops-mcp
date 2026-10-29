@@ -133,13 +133,13 @@ SELECT id FROM nodes WHERE NOT (id = ANY($1::text[])) ON CONFLICT(id) DO NOTHING
 	if err := tags.flush(); err != nil {
 		return err
 	}
-	nodes := newInsertBatch(ctx, tx, "INSERT INTO nodes(id,name,host_id,identity_id,sudo_mode,privilege_credential_id,disabled,execution)", "")
+	nodes := newInsertBatch(ctx, tx, "INSERT INTO nodes(id,name,host_id,identity_id,sudo_mode,privilege_credential_id,password_prompt_pattern,disabled,execution)", "")
 	for _, n := range v.Nodes {
 		execution, err := json.Marshal(n.Execution)
 		if err != nil {
 			return fmt.Errorf("encode node execution: %w", err)
 		}
-		if err := nodes.add(n.ID, n.Name, n.HostID, n.IdentityID, n.SudoMode, nullable(n.PrivilegeCredentialID), n.Disabled, string(execution)); err != nil {
+		if err := nodes.add(n.ID, n.Name, n.HostID, n.IdentityID, n.SudoMode, nullable(n.PrivilegeCredentialID), n.PasswordPromptPattern, n.Disabled, string(execution)); err != nil {
 			return err
 		}
 	}

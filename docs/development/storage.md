@@ -6,7 +6,7 @@
 
 ## 数据与更新
 
-SQLite 当前 schema v8；PostgreSQL 当前 schema v5，两个后端迁移历史独立。当前实体包括 hosts、identities、nodes、tags、credentials、credential_versions、policies、sources、tombstones、admin、mcp_tokens 和 audit_events。node_jumps 保留有序跳板，node_tags 通过稳定 tag ID 关联。旧管理员会话表已移除。
+SQLite 当前 schema v10；PostgreSQL 当前 schema v7，两个后端迁移历史独立。当前实体包括 hosts、identities、nodes、tags、credentials、credential_versions、policies、sources、tombstones、admin、mcp_tokens 和 audit_events。node_jumps 保留有序跳板，node_tags 通过稳定 tag ID 关联；节点支持可选 execution 配置（SQLite v9/PostgreSQL v6）和提权提示词正则 password_prompt_pattern（SQLite v10/PostgreSQL v7）。旧管理员会话表已移除。
 
 业务写入使用 expected revision。service 先建立协调器准入屏障，数据库提交后再发布快照；提交结果不确定或发布失败时，通过 Reconcile 重读已提交状态，不能盲目重放写入。普通编辑保留已准入操作的原目标；禁用、策略或凭据撤销遵循共享 gate 契约。
 

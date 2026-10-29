@@ -16,11 +16,15 @@ func TestExecutionConfigurationPersistenceAndArchive(t *testing.T) {
 				node := doc.Nodes["peer"]
 				login := false
 				node.Execution = &ssh.ExecutionConfig{Interpreter: ssh.InterpreterZsh, LaunchDialect: ssh.LaunchPOSIX, Login: &login}
+				node.PasswordPromptPattern = `(?i)password for .*:`
 				doc.Nodes["peer"] = node
 				v, report := testutil.Plan(t, s, vault, doc)
 				save(t, s, v)
 				loaded := inventory(t, s)
 				id := report.NodeIDs["peer"]
+				if loaded.Nodes[id].PasswordPromptPattern != `(?i)password for .*:` {
+					t.Fatalf("password prompt pattern not persisted: %q", loaded.Nodes[id].PasswordPromptPattern)
+				}
 				cloned := loaded.Clone()
 				*cloned.Nodes[id].Execution.Login = true
 				if *loaded.Nodes[id].Execution.Login {
@@ -42,9 +46,13 @@ func TestExecutionConfigurationPersistenceAndArchive(t *testing.T) {
 				if err := dst.Restore(t.Context(), b); err != nil {
 					t.Fatal(err)
 				}
-				got := inventory(t, dst).Nodes[id].Execution
+				restoredNode := inventory(t, dst).Nodes[id]
+				got := restoredNode.Execution
 				if got == nil || got.Interpreter != ssh.InterpreterZsh || got.LaunchDialect != ssh.LaunchPOSIX || got.Login == nil || *got.Login {
 					t.Fatalf("execution configuration lost: %+v", got)
+				}
+				if restoredNode.PasswordPromptPattern != `(?i)password for .*:` {
+					t.Fatalf("password prompt pattern lost after restore: %q", restoredNode.PasswordPromptPattern)
 				}
 			})
 		}

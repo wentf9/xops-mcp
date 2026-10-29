@@ -34,6 +34,7 @@ type Node struct {
 	ID, Name, HostID, IdentityID    string
 	JumpIDs                         []string
 	SudoMode, PrivilegeCredentialID string
+	PasswordPromptPattern           string
 	Aliases, TagIDs                 []string
 	Disabled                        bool
 }

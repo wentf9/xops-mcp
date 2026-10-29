@@ -29,23 +29,39 @@ func (s probeSources) Source(ctx context.Context, q storage.Source) (storage.Sou
 	return storage.Source{}, ssh.ErrSnapshotMismatch
 }
 
+// ExecutionProbeResult wraps ProbeResult with captured protocol diagnostics.
+type ExecutionProbeResult struct {
+	*ssh.ProbeResult
+	Diagnostics []DiagnosticEvent `json:"diagnostics,omitempty"`
+}
+
 // ProbeExecution inspects an administrator-authorized immutable draft plan using
 // the deployment's pinned host keys and versioned credentials. Only the fixed
 // core probes run; the caller owns revision checks and audit admission.
-func (m *Materials) ProbeExecution(ctx context.Context, plan ssh.ConnectionPlan, sources []storage.Source) (_ *ssh.ProbeResult, retErr error) {
+func (m *Materials) ProbeExecution(ctx context.Context, plan ssh.ConnectionPlan, sources []storage.Source) (_ *ExecutionProbeResult, retErr error) {
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
+	collector := NewDiagnosticCollector()
 	draft := &Materials{Store: probeSources{Repository: m.Store, sources: sources}, Vault: m.Vault, DomainID: m.DomainID}
-	connector := ssh.NewConnector(nil, ssh.WithSecretResolver(draft), ssh.WithKeySource(draft), ssh.WithHostKeyVerifier(draft), ssh.WithHandshakeTimeout(10*time.Second))
+	connector := ssh.NewConnector(nil,
+		ssh.WithSecretResolver(draft),
+		ssh.WithKeySource(draft),
+		ssh.WithHostKeyVerifier(draft),
+		ssh.WithHandshakeTimeout(10*time.Second),
+		ssh.WithDiagnostics(collector),
+	)
 	defer func() { retErr = errors.Join(retErr, connector.CloseAll()) }()
 	connection, err := connector.ConnectPlan(ctx, plan)
 	if err != nil {
-		return nil, fmt.Errorf("connect execution probe: %w", err)
+		return &ExecutionProbeResult{Diagnostics: collector.Events()}, fmt.Errorf("connect execution probe: %w", err)
 	}
 	defer func() { retErr = errors.Join(retErr, connection.Close()) }()
 	result, err := connection.Client.ProbeExecutionConfig(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("probe execution environment: %w", err)
+		return &ExecutionProbeResult{Diagnostics: collector.Events()}, fmt.Errorf("probe execution environment: %w", err)
 	}
-	return result, nil
+	return &ExecutionProbeResult{
+		ProbeResult: result,
+		Diagnostics: collector.Events(),
+	}, nil
 }

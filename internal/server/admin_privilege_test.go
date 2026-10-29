@@ -15,6 +15,7 @@ import (
 	"github.com/wentf9/xops-cli/core/mcp/ports"
 	"github.com/wentf9/xops-cli/core/ssh"
 	"github.com/wentf9/xops-cli/core/testutil/sshfixture"
+	"github.com/wentf9/xops-mcp/internal/adapters/xops"
 	"github.com/wentf9/xops-mcp/internal/service"
 	"github.com/wentf9/xops-mcp/internal/testutil"
 	cryptoSSH "golang.org/x/crypto/ssh"
@@ -91,10 +92,11 @@ func TestNodePrivilegeTestAPI(t *testing.T) {
 	// Test privilege on enabled root node -> 200
 	resp := p.request("POST", "/api/v1/nodes/"+nodeID+"/test-privilege", map[string]any{}, 200, nil)
 	var result struct {
-		Escalated bool   `json:"escalated"`
-		SudoMode  string `json:"sudoMode"`
-		User      string `json:"user"`
-		ElapsedMS int64  `json:"elapsedMS"`
+		Escalated   bool                   `json:"escalated"`
+		SudoMode    string                 `json:"sudoMode"`
+		User        string                 `json:"user"`
+		ElapsedMS   int64                  `json:"elapsedMS"`
+		Diagnostics []xops.DiagnosticEvent `json:"diagnostics,omitempty"`
 	}
 	if err := json.Unmarshal(resp, &result); err != nil {
 		t.Fatal(err)
@@ -167,14 +169,48 @@ func TestNodePrivilegeTestAPI(t *testing.T) {
 
 	// Test privilege-probe on new draft node with sudoMode "none"
 	probeResp = p.request("POST", "/api/v1/nodes/privilege-probe", map[string]any{
-		"nodeID":     "",
-		"hostID":     hostID,
-		"identityID": identityID,
-		"jumpIDs":    []string{},
-		"sudoMode":   "none",
+		"nodeID":                "",
+		"hostID":                hostID,
+		"identityID":            identityID,
+		"jumpIDs":               []string{},
+		"sudoMode":              "none",
+		"passwordPromptPattern": `.*password:.*`,
 	}, 200, nil)
 	if err := json.Unmarshal(probeResp, &probeResult); err != nil {
 		t.Fatal(err)
+	}
+
+	// Test privilege-probe with invalid passwordPromptPattern -> 422
+	p.request("POST", "/api/v1/nodes/privilege-probe", map[string]any{
+		"nodeID":                "",
+		"hostID":                hostID,
+		"identityID":            identityID,
+		"jumpIDs":               []string{},
+		"sudoMode":              "none",
+		"passwordPromptPattern": `[invalid`,
+	}, 422, nil)
+
+	// Save node with passwordPromptPattern and verify in inventory
+	node.PasswordPromptPattern = `.*\[sudo\] password:.*`
+	p.request("PUT", "/api/v1/nodes/"+nodeID, node, 200, nil)
+	invData := p.request("GET", "/api/v1/inventory", nil, 200, nil)
+	var inv struct {
+		Nodes []struct {
+			ID                    string `json:"id"`
+			PasswordPromptPattern string `json:"passwordPromptPattern"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(invData, &inv); err != nil {
+		t.Fatal(err)
+	}
+	var foundPattern string
+	for _, n := range inv.Nodes {
+		if n.ID == nodeID {
+			foundPattern = n.PasswordPromptPattern
+		}
+	}
+	if foundPattern != `.*\[sudo\] password:.*` {
+		t.Fatalf("expected node passwordPromptPattern in inventory, got %q", foundPattern)
 	}
 	if !probeResult.Escalated || probeResult.User == "" {
 		t.Fatalf("unexpected new node probe result for none mode: %+v", probeResult)

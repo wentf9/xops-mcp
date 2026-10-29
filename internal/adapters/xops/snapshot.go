@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -138,6 +139,18 @@ func Snapshot(v storage.Inventory) (ports.OperationSnapshot, []storage.Source, e
 		if n.PrivilegeCredentialID != "" && (privilege.ID == "" || privilege.Kind != "password") {
 			return view, nil, errors.New("privilege credential must be a password")
 		}
+		if n.PasswordPromptPattern != "" {
+			if !validText(n.PasswordPromptPattern) {
+				return view, nil, fmt.Errorf("node %q password prompt pattern contains invalid characters", n.Name)
+			}
+			re, err := regexp.Compile(n.PasswordPromptPattern)
+			if err != nil {
+				return view, nil, fmt.Errorf("node %q password prompt pattern: %w", n.Name, err)
+			}
+			if re.MatchString("") {
+				return view, nil, fmt.Errorf("node %q password prompt pattern must not match empty string", n.Name)
+			}
+		}
 		if mode == ssh.SudoModeSu && privilege.ID == "" && !n.Disabled {
 			return view, nil, errors.New("su requires a configured privilege credential")
 		}
@@ -160,7 +173,13 @@ func Snapshot(v storage.Inventory) (ports.OperationSnapshot, []storage.Source, e
 		if authType == "" {
 			authType = "password"
 		}
-		hop := ssh.ClientConfig{NodeID: id, Address: h.Address, Port: h.Port, User: i.User, AuthType: authType, AuthUpdateToken: authVersion, SudoMode: mode, SudoUpdateToken: sudoVersion, TrustVersion: trustVersion, ProxyJump: strings.Join(n.JumpIDs, ",")}
+		hop := ssh.ClientConfig{
+			NodeID: id, Address: h.Address, Port: h.Port, User: i.User,
+			AuthType: authType, AuthUpdateToken: authVersion,
+			SudoMode: mode, SudoUpdateToken: sudoVersion,
+			TrustVersion: trustVersion, ProxyJump: strings.Join(n.JumpIDs, ","),
+			PasswordPromptPattern: n.PasswordPromptPattern,
+		}
 		if authType == "key" {
 			hop.KeyRef = c.ID
 		}

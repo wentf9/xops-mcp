@@ -69,7 +69,9 @@ func TestImportStdinCancellationReleasesDeployment(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Error("stdin import ignored cancellation")
 		testutil.Close(t, reader)
-		<-done
+		if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+			t.Logf("stdin drain: %v", err)
+		}
 	}
 	select {
 	case <-input.exited:
@@ -326,5 +328,19 @@ func TestRSARequestEncryptionKeyGeneration(t *testing.T) {
 	}
 	if _, err := os.Stat(invalid); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("invalid keygen created a file")
+	}
+}
+
+func TestOutputBindingLifecycle(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	var out, stderr bytes.Buffer
+	runErr := command.Run(ctx, []string{"help"}, nil, &out, &stderr)
+	if runErr != nil {
+		t.Fatalf("help failed: %v", runErr)
+	}
+	if !strings.Contains(out.String(), "xops-mcp: standalone HTTP MCP server") {
+		t.Fatalf("unexpected help output: %s", out.String())
 	}
 }

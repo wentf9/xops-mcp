@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"strings"
@@ -89,7 +90,9 @@ func TestPostgresOwnershipLossStopsAdmissionAndListeners(t *testing.T) {
 	defer func() {
 		cancel()
 		if !joined {
-			<-done
+			if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+				t.Logf("server run exited: %v", err)
+			}
 		}
 	}()
 	var address string

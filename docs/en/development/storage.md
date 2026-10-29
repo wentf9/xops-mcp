@@ -6,7 +6,7 @@ Operational instructions are in [databases](../user/postgresql.md) and [maintena
 
 ## Data and publication
 
-SQLite currently uses schema v8 and PostgreSQL v5, with independent migration histories. Entities include hosts, identities, nodes, tags, credentials, credential_versions, policies, sources, tombstones, admin, mcp_tokens and audit_events. node_jumps preserves ordered jumps; node_tags references stable tag IDs. Legacy administrator sessions have been removed.
+SQLite currently uses schema v10 and PostgreSQL v7, with independent migration histories. Entities include hosts, identities, nodes, tags, credentials, credential_versions, policies, sources, tombstones, admin, mcp_tokens and audit_events. node_jumps preserves ordered jumps; node_tags references stable tag IDs; nodes persist optional execution configuration (SQLite v9/PostgreSQL v6) and password prompt regex patterns (SQLite v10/PostgreSQL v7). Legacy administrator sessions have been removed.
 
 Writes use expected revisions. The service creates an admission barrier before persistence and publishes the snapshot after commit. Uncertain commits/publication failures reconcile by reloading committed state rather than replaying writes. Ordinary edits retain admitted targets; disablement, policy and credential revocation follow shared gate contracts.
 

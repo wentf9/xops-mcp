@@ -15,6 +15,7 @@ import (
 
 	"github.com/wentf9/xops-cli/core/ssh"
 	"github.com/wentf9/xops-cli/core/testutil/sshfixture"
+	"github.com/wentf9/xops-mcp/internal/adapters/xops"
 	"github.com/wentf9/xops-mcp/internal/service"
 	"github.com/wentf9/xops-mcp/internal/storage"
 	"github.com/wentf9/xops-mcp/internal/testutil"
@@ -109,10 +110,14 @@ func TestExecutionProbePreviewAndSave(t *testing.T) {
 	}
 	input := map[string]any{"hostID": original.HostID, "identityID": original.IdentityID, "jumpIDs": []string{}}
 	response := p.request("POST", "/api/v1/nodes/execution-probe", input, 200, nil)
-	var result ssh.ProbeResult
-	if err := json.Unmarshal(response, &result); err != nil {
+	var raw struct {
+		ssh.ProbeResult
+		Diagnostics []xops.DiagnosticEvent `json:"diagnostics,omitempty"`
+	}
+	if err := json.Unmarshal(response, &raw); err != nil {
 		t.Fatal(err)
 	}
+	result := raw.ProbeResult
 	if result.SuggestedConfig.Interpreter != ssh.InterpreterZsh || result.DetectedDialect != ssh.LaunchPOSIX || !slices.Equal(result.AvailableInterpreters, []ssh.Interpreter{ssh.InterpreterSh, ssh.InterpreterZsh}) {
 		t.Fatalf("unexpected recommendation: %+v", result)
 	}

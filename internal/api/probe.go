@@ -202,7 +202,7 @@ func (s *Server) testNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	start := time.Now()
-	err = s.probes.TestConnection(ctx, permit, r.PathValue("id"))
+	res, err := s.probes.TestConnection(ctx, permit, r.PathValue("id"))
 	err = errors.Join(err, permit.Close())
 	event.Outcome = "executed"
 	if err != nil {
@@ -211,15 +211,19 @@ func (s *Server) testNode(w http.ResponseWriter, r *http.Request) {
 	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer stop()
 	auditErr := s.store.Append(cleanup, event)
+	var diags []xops.DiagnosticEvent
+	if res != nil {
+		diags = res.Diagnostics
+	}
 	if err != nil {
-		problem(w, 502, "connection_failed", "SSH 连接失败，请检查地址、凭据和主机密钥")
+		problemWithDiagnostics(w, 502, "connection_failed", "SSH 连接失败，请检查地址、凭据和主机密钥", diags)
 		return
 	}
 	if auditErr != nil {
 		failure(w, auditErr)
 		return
 	}
-	respond(w, 200, map[string]any{"connected": true, "elapsedMS": time.Since(start).Milliseconds()})
+	respond(w, 200, map[string]any{"connected": true, "elapsedMS": time.Since(start).Milliseconds(), "diagnostics": diags})
 }
 func (s *Server) testNodePrivilege(w http.ResponseWriter, r *http.Request) {
 	rev, ok := expected(w, r)
@@ -268,16 +272,20 @@ func (s *Server) testNodePrivilege(w http.ResponseWriter, r *http.Request) {
 	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer stop()
 	auditErr := s.store.Append(cleanup, event)
+	var diags []xops.DiagnosticEvent
+	if res != nil {
+		diags = res.Diagnostics
+	}
 	if err != nil {
 		if strings.Contains(err.Error(), "SSH connection failed") {
-			problem(w, 502, "connection_failed", "SSH 连接失败，请检查地址、凭据和主机密钥")
+			problemWithDiagnostics(w, 502, "connection_failed", "SSH 连接失败，请检查地址、凭据和主机密钥", diags)
 			return
 		}
 		if strings.Contains(err.Error(), "未配置提权方式") {
-			problem(w, 422, "privilege_not_configured", err.Error())
+			problemWithDiagnostics(w, 422, "privilege_not_configured", err.Error(), diags)
 			return
 		}
-		problem(w, 502, "privilege_failed", err.Error())
+		problemWithDiagnostics(w, 502, "privilege_failed", err.Error(), diags)
 		return
 	}
 	if auditErr != nil {
@@ -285,11 +293,12 @@ func (s *Server) testNodePrivilege(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, 200, map[string]any{
-		"escalated": res.Escalated,
-		"sudoMode":  res.SudoMode,
-		"user":      res.User,
-		"detail":    localizedMessage(w, res.Detail),
-		"elapsedMS": time.Since(start).Milliseconds(),
+		"escalated":   res.Escalated,
+		"sudoMode":    res.SudoMode,
+		"user":        res.User,
+		"detail":      localizedMessage(w, res.Detail),
+		"elapsedMS":   time.Since(start).Milliseconds(),
+		"diagnostics": diags,
 	})
 }
 func strconvRevision(revision uint64) string { return strconv.FormatUint(revision, 10) }
@@ -301,6 +310,7 @@ type privilegeProbeInput struct {
 	JumpIDs               []string             `json:"jumpIDs"`
 	SudoMode              string               `json:"sudoMode"`
 	PrivilegeCredentialID string               `json:"privilegeCredentialID"`
+	PasswordPromptPattern string               `json:"passwordPromptPattern,omitempty"`
 	Execution             *ssh.ExecutionConfig `json:"execution,omitempty"`
 }
 
@@ -348,6 +358,7 @@ func (s *Server) probePrivilege(w http.ResponseWriter, r *http.Request) {
 	node.Disabled = false
 	node.SudoMode = input.SudoMode
 	node.PrivilegeCredentialID = input.PrivilegeCredentialID
+	node.PasswordPromptPattern = input.PasswordPromptPattern
 	node.Execution = input.Execution.Clone()
 	v.Nodes[id] = node
 
@@ -378,20 +389,24 @@ func (s *Server) probePrivilege(w http.ResponseWriter, r *http.Request) {
 	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer stop()
 	auditErr := s.store.Append(cleanup, event)
+	var diags []xops.DiagnosticEvent
+	if res != nil {
+		diags = res.Diagnostics
+	}
 	if probeErr != nil {
 		if errors.Is(probeErr, context.Canceled) || errors.Is(probeErr, context.DeadlineExceeded) {
 			failure(w, probeErr)
 			return
 		}
 		if strings.Contains(probeErr.Error(), "SSH connection failed") {
-			problem(w, 502, "connection_failed", "SSH 连接失败，请检查地址、凭据和主机密钥")
+			problemWithDiagnostics(w, 502, "connection_failed", "SSH 连接失败，请检查地址、凭据和主机密钥", diags)
 			return
 		}
 		if strings.Contains(probeErr.Error(), "未配置提权方式") {
-			problem(w, 422, "privilege_not_configured", probeErr.Error())
+			problemWithDiagnostics(w, 422, "privilege_not_configured", probeErr.Error(), diags)
 			return
 		}
-		problem(w, 502, "privilege_failed", probeErr.Error())
+		problemWithDiagnostics(w, 502, "privilege_failed", probeErr.Error(), diags)
 		return
 	}
 	if auditErr != nil {
@@ -412,10 +427,11 @@ func (s *Server) probePrivilege(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, 200, map[string]any{
-		"escalated": res.Escalated,
-		"sudoMode":  res.SudoMode,
-		"user":      res.User,
-		"detail":    localizedMessage(w, res.Detail),
-		"elapsedMS": time.Since(start).Milliseconds(),
+		"escalated":   res.Escalated,
+		"sudoMode":    res.SudoMode,
+		"user":        res.User,
+		"detail":      localizedMessage(w, res.Detail),
+		"elapsedMS":   time.Since(start).Milliseconds(),
+		"diagnostics": diags,
 	})
 }

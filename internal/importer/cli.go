@@ -60,9 +60,6 @@ func decodeCLI(data []byte) (Document, []string, error) {
 	if source.SchemaVersion < 0 || source.SchemaVersion > 2 {
 		return Document{}, nil, errors.New("unsupported xops-cli schema version")
 	}
-	if source.PasswordPromptPattern != "" {
-		return Document{}, nil, errors.New("custom CLI password prompt patterns require a separate server adaptation")
-	}
 	d := Document{Version: 1, Hosts: map[string]Host{}, Identities: map[string]Identity{}, Nodes: map[string]Node{}, Credentials: map[string]Credential{}, Policy: source.Guardrail}
 	warnings := []string{"CLI credential stores, key paths, SSH agent, known_hosts, and MCP listener settings are not imported; host keys must be pinned separately"}
 	for name, h := range source.Hosts {
@@ -83,9 +80,6 @@ func decodeCLI(data []byte) (Document, []string, error) {
 		d.Identities[name] = identity
 	}
 	for name, n := range source.Nodes {
-		if n.PasswordPromptPattern != "" {
-			return d, nil, errors.New("custom CLI password prompt patterns are not supported by this importer")
-		}
 		mode := n.SudoMode
 		if mode == "auto" {
 			mode = "none"
@@ -95,7 +89,11 @@ func decodeCLI(data []byte) (Document, []string, error) {
 		if err != nil {
 			return d, nil, fmt.Errorf("node %q execution: %w", name, err)
 		}
-		node := Node{Execution: execution, Host: n.HostRef, Identity: n.IdentityRef, ProxyJump: n.ProxyJump, Aliases: n.Alias, Tags: n.Tags, SudoMode: mode, Disabled: true}
+		pattern := n.PasswordPromptPattern
+		if pattern == "" {
+			pattern = source.PasswordPromptPattern
+		}
+		node := Node{Execution: execution, Host: n.HostRef, Identity: n.IdentityRef, ProxyJump: n.ProxyJump, Aliases: n.Alias, Tags: n.Tags, SudoMode: mode, Disabled: true, PasswordPromptPattern: pattern}
 		if source.SchemaVersion == 2 && n.SuPwd != "" {
 			return d, nil, errors.New("schema v2 must not contain plaintext privilege credentials")
 		}

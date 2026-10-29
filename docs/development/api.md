@@ -35,11 +35,11 @@
 
 ## 节点执行配置
 
-节点创建、修改 DTO 与库存响应支持可选的 `execution: {"interpreter":"zsh","launchDialect":"posix","login":false}`。省略或 null 启用运行时探测；login 区分省略、true、false。更新使用库存 ETag 并替换节点配置，执行配置解码或校验失败返回 400。执行配置参与操作绑定，并为已准入操作保留副本。数据库迁移为 SQLite v9 / PostgreSQL v6；旧节点默认 null。
+节点创建、修改 DTO 与库存响应支持可选的 `execution: {"interpreter":"zsh","launchDialect":"posix","login":false}` 及可选提权提示词正则 `passwordPromptPattern: "..."`。省略或 null 启用运行时探测；login 区分省略、true、false。更新使用库存 ETag 并替换节点配置，执行配置解码或正则校验失败返回 400/422。执行配置与提权提示词正则参与连接计划及操作绑定摘要生成，并为已准入操作保留副本。数据库迁移为 SQLite v10 / PostgreSQL v7；旧节点默认 null 及空字符串。
 
-`POST /nodes/execution-probe` 接收 `{ "nodeID": "可选的已有节点ID", "hostID": "...", "identityID": "...", "jumpIDs": [] }`，携带库存 `If-Match`。返回 core `ProbeResult`（`availableInterpreters`、`suggestedConfig`、`detectedDialect` 等），不改变库存或 revision。使用当前表单的连接引用、固定信任和版本化凭据；显式管理员检查允许新建/停用目标，拒绝停用跳板。仅运行 core 固定诊断，限时 25 秒，共用四个探测并发额度，记录意图与结果审计。网络操作前后检查 revision，过期结果返回 412；缺少信任/凭据或无效链返回 422，连接/探测失败返回 502，超时返回 408。用户通过正常节点创建/更新接口保存选中的配置。
+`POST /nodes/execution-probe` 接收 `{ "nodeID": "可选的已有节点ID", "hostID": "...", "identityID": "...", "jumpIDs": [] }`，携带库存 `If-Match`。返回 core `ProbeResult`（`availableInterpreters`、`suggestedConfig`、`detectedDialect` 等）及捕获的协议生命周期事件 `diagnostics`，不改变库存或 revision。使用当前表单的连接引用、固定信任和版本化凭据；显式管理员检查允许新建/停用目标，拒绝停用跳板。仅运行 core 固定诊断，限时 25 秒，共用四个探测并发额度，记录意图与结果审计。网络操作前后检查 revision，过期结果返回 412；缺少信任/凭据或无效链返回 422，连接/探测失败返回 502（包含 `diagnostics`），超时返回 408。用户通过正常节点创建/更新接口保存选中的配置。
 
-`POST /nodes/{id}/test-privilege` 使用已保存的节点绑定；`POST /nodes/privilege-probe` 接收 `{ "nodeID": "可选的已有节点ID", "hostID": "...", "identityID": "...", "jumpIDs": [], "sudoMode": "none", "privilegeCredentialID": "", "execution": {"interpreter":"sh","launchDialect":"posix"} }`，检查草稿而不保存。两者携带库存 `If-Match`，返回 `escalated`、`sudoMode`、`user`、`detail` 和 `elapsedMS`。所有成功结果均须验证实际 UID 为 0 且返回用户名；执行环境省略、null 或未指定解释器与启动 Shell 时，通过 core 的有界探测选择临时执行配置，不写回节点；显式配置保持不变。`none` 模式按执行环境检查登录身份，再执行免密 sudo 身份检查，不以 `sudo true` 成功替代身份验证。手动修改表单或关闭后丢弃旧提权结果。Shell 探测不改变执行配置时保留已有结果；应用不同的执行配置时，若当前表单已请求过提权测试，则取消旧请求并自动用新配置重新验证。未请求过提权测试，或已手动更改连接/提权设置后，不自动发起验证。
+`POST /nodes/{id}/test` 测试当前绑定的 SSH 连接，返回 `connected`、`elapsedMS` 与 `diagnostics`；`POST /nodes/{id}/test-privilege` 使用已保存的节点绑定；`POST /nodes/privilege-probe` 接收 `{ "nodeID": "可选的已有节点ID", "hostID": "...", "identityID": "...", "jumpIDs": [], "sudoMode": "none", "privilegeCredentialID": "", "passwordPromptPattern": "", "execution": {"interpreter":"sh","launchDialect":"posix"} }`，检查草稿而不保存。两者携带库存 `If-Match`，返回 `escalated`、`sudoMode`、`user`、`detail`、`elapsedMS` 和 `diagnostics`。所有成功结果均须验证实际 UID 为 0 且返回用户名；执行环境省略、null 或未指定解释器与启动 Shell 时，通过 core 的有界探测选择临时执行配置，不写回节点；显式配置保持不变。`none` 模式按执行环境检查登录身份，再执行免密 sudo 身份检查，不以 `sudo true` 成功替代身份验证。连接或提权失败时返回 502/422 及 `diagnostics`。手动修改表单或关闭后丢弃旧提权结果。Shell 探测不改变执行配置时保留已有结果；应用不同的执行配置时，若当前表单已请求过提权测试，则取消旧请求并自动用新配置重新验证。未请求过提权测试，或已手动更改连接/提权设置后，不自动发起验证。
 
 ## 私钥验证
 

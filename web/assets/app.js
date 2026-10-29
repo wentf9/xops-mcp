@@ -142,6 +142,16 @@ function toast(text, error = false) {
     $("#notices").firstElementChild.remove();
   setTimeout(() => e.remove(), 6000);
 }
+function formatDiagnosticSummary(diagnostics) {
+  if (!Array.isArray(diagnostics) || diagnostics.length === 0) return "";
+  const last = diagnostics[diagnostics.length - 1];
+  const parts = [];
+  if (last.operation) parts.push(last.operation);
+  if (last.outcome) parts.push(last.outcome);
+  if (last.serverVersion) parts.push(last.serverVersion);
+  if (last.keyExchange) parts.push(last.keyExchange);
+  return parts.join(" · ");
+}
 async function api(path, { method = "GET", body, etag, signal } = {}) {
   const token = accessToken, generation = authGeneration;
   if (body !== undefined && ["/auth/login", "/auth/setup", "/auth/password"].includes(path))
@@ -176,6 +186,7 @@ async function api(path, { method = "GET", body, etag, signal } = {}) {
     }
     const e = new Error(data.message || tr("请求失败"));
     e.status = response.status;
+    e.diagnostics = data.diagnostics;
     throw e;
   }
   return { data, etag: response.headers.get("ETag") };
@@ -784,8 +795,10 @@ function bindExecutionProbe(form, id, base) {
         form.dispatchEvent(new Event("executionchange"));
       status.textContent = tr("支持的 Shell：{0}。已选中推荐配置 {1} / {2}，点击保存后生效。", {"0": data.availableInterpreters.join(locale === "en" ? ", " : "、") || "server", "1": suggested.interpreter, "2": suggested.launchDialect});
     } catch (error) {
-      if (ownsDialog(form) && request === sequence && error.name !== "AbortError")
-        status.textContent = error.message + (error.status === 412 ? tr(" 请关闭窗口，刷新后重新编辑。") : "");
+      if (ownsDialog(form) && request === sequence && error.name !== "AbortError") {
+        const diag = formatDiagnosticSummary(error.diagnostics);
+        status.textContent = error.message + (diag ? ` (${diag})` : "") + (error.status === 412 ? tr(" 请关闭窗口，刷新后重新编辑。") : "");
+      }
     } finally {
       if (ownsDialog(form) && request === sequence) {
         controller = null;
@@ -808,6 +821,7 @@ function bindPrivilegeTest(form, id, base) {
     jumpIDs: [...form.querySelectorAll('select[name="jumpID"]')].map(s => s.value).filter(Boolean),
     sudoMode: form.elements.sudoMode.value,
     privilegeCredentialID: form.elements.privilegeCredentialID.value,
+    passwordPromptPattern: (form.elements.passwordPromptPattern?.value || "").trim(),
     execution: executionInput(new FormData(form)),
   });
   const cancel = () => {
@@ -821,8 +835,11 @@ function bindPrivilegeTest(form, id, base) {
   };
   dialog.addEventListener("close", cancel, { once: true });
   form.addEventListener("submit", cancel, true);
+  form.addEventListener("input", (e) => {
+    if (e.target.name === "passwordPromptPattern") cancel();
+  });
   form.addEventListener("change", (e) => {
-    if (["sudoMode", "privilegeCredentialID", "hostID", "identityID", "jumpID", "interpreter", "launchDialect", "login"].includes(e.target.name)) cancel();
+    if (["sudoMode", "privilegeCredentialID", "passwordPromptPattern", "hostID", "identityID", "jumpID", "interpreter", "launchDialect", "login"].includes(e.target.name)) cancel();
   });
   form.addEventListener("executionchange", () => {
     // A prior test authorizes rechecking the updated Shell settings. Manual
@@ -860,8 +877,10 @@ function bindPrivilegeTest(form, id, base) {
       toast(tr("提权测试成功 · {0}{1} · {2} ms", {"0": data.user, "1": modeText, "2": data.elapsedMS}));
     } catch (error) {
       if (current() && error.name !== "AbortError") {
-        status.textContent = error.message;
-        toast(error.message, true);
+        const diag = formatDiagnosticSummary(error.diagnostics);
+        const msg = error.message + (diag ? ` (${diag})` : "");
+        status.textContent = msg;
+        toast(msg, true);
       }
     } finally {
       if (ownsDialog(form) && request === sequence) {
@@ -1035,7 +1054,7 @@ function edit(kind, id) {
       "privilegeCredentialID",
       S.v.credentials.filter((c) => c.kind === "password"),
       item.privilegeCredentialID,
-    )}</div><div class="privilege-test-bar"><button type="button" id="modal-test-privilege">${tr("测试提权能力")}</button><p id="modal-privilege-status" class="hint" role="status" aria-live="polite"></p></div><label class="check"><input type="checkbox" name="enabled" ${id && !item.disabled ? "checked" : ""}>${tr("启用节点")}</label><p class="hint">${tr("启用前需配置凭据和主机公钥。未启用的跳板会阻止下游节点操作。")}</p>`;
+    )}</div><label>${tr("提权提示词正则")}<input name="passwordPromptPattern" value="${esc(item.passwordPromptPattern || "")}" maxlength="256" placeholder="${tr("可选，如 [sudo] password for 或 .*password:.*")}"></label><p class="hint">${tr("可选：当远端 PAM 忽略 -p 选项或使用 su 时，用于匹配密码提示词并自动应答。")}</p><div class="privilege-test-bar"><button type="button" id="modal-test-privilege">${tr("测试提权能力")}</button><p id="modal-privilege-status" class="hint" role="status" aria-live="polite"></p></div><label class="check"><input type="checkbox" name="enabled" ${id && !item.disabled ? "checked" : ""}>${tr("启用节点")}</label><p class="hint">${tr("启用前需配置凭据和主机公钥。未启用的跳板会阻止下游节点操作。")}</p>`;
   if (kind === "nodes") html += executionFields(item.execution);
   if (kind === "credentials")
     html += `<label>${tr("类型")}<select aria-label="${tr("类型")}" name="kind"><option value="password" ${item.kind !== "key" ? "selected" : ""}>${tr("密码")}</option><option value="key" ${item.kind === "key" ? "selected" : ""}>${tr("SSH 私钥")}</option></select></label><div id="secret-fields"></div><p class="hint">${id ? tr("留空保留已有材料；填写后会创建新版本。") : tr("凭据加密保存，创建后不会回显。")}</p>`;
@@ -1058,6 +1077,7 @@ function edit(kind, id) {
         disabled: !data.has("enabled"),
         sudoMode: x.sudoMode,
         privilegeCredentialID: x.privilegeCredentialID,
+        passwordPromptPattern: (x.passwordPromptPattern || "").trim(),
         execution: executionInput(data),
       };
     if (kind === "credentials") {
@@ -1454,7 +1474,8 @@ document.addEventListener("click", async (e) => {
       );
     }
   } catch (error) {
-    toast(error.message, true);
+    const diag = formatDiagnosticSummary(error.diagnostics);
+    toast(error.message + (diag ? ` (${diag})` : ""), true);
   } finally {
     button.disabled = false;
   }

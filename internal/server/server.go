@@ -87,7 +87,13 @@ func openHost(ctx context.Context, cfg config.Config, allowMigration bool) (_ *H
 		if backend != nil {
 			return nil, errors.New("host already owns a runtime backend")
 		}
-		created, err := sshexec.New(ctx, sshexec.Options{SSH: []ssh.Option{ssh.WithSecretResolver(materials), ssh.WithKeySource(materials), ssh.WithHostKeyVerifier(materials), ssh.WithHandshakeTimeout(10 * time.Second)}})
+		created, err := sshexec.New(ctx, sshexec.Options{SSH: []ssh.Option{
+			ssh.WithSecretResolver(materials),
+			ssh.WithKeySource(materials),
+			ssh.WithHostKeyVerifier(materials),
+			ssh.WithHandshakeTimeout(10 * time.Second),
+			ssh.WithDiagnostics(xops.SlogDiagnosticObserver{Level: 1}),
+		}})
 		if err != nil {
 			return nil, err
 		}

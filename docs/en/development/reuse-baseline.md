@@ -7,12 +7,12 @@
 | Item | Fixed value |
 | --- | --- |
 | Upstream module | `github.com/wentf9/xops-cli` |
-| Version | `v0.14.0` |
-| Commit | [`a12d52f4452109cf74f91f3a3bf99fac30dcedf0`](https://github.com/wentf9/xops-cli/commit/a12d52f4452109cf74f91f3a3bf99fac30dcedf0) |
+| Version | `v0.15.1-0.20261029074656-7a52a01fbf14` |
+| Commit | [`7a52a01fbf1462ed4bb2ac2992b7e286b4887246`](https://github.com/wentf9/xops-cli/commit/7a52a01fbf1462ed4bb2ac2992b7e286b4887246) |
 | Minimum Go | `1.26.0` |
 | MCP SDK | `v1.8.0` |
 
-The consumer pins the upstream `v0.14.0` release. It adds bounded command execution with structured outcomes, per-call execution overrides, lazy shell probing, Bash/sh/zsh/fish and Windows interpreter adapters, and SFTP-backed filesystem operations. Existing authentication, transfer isolation and SSH lifecycle fixes remain included. go.mod/go.sum are authoritative; do not commit local replacements or workspaces.
+The consumer pins upstream `v0.15.1-0.20261029074656-7a52a01fbf14`. It incorporates `ConnectPlan` diagnostic observer forwarding, native cross-platform cancelable output pipelines (`BindOutput`), unrestricted interpreter combinations with dynamic script overrides, OpenSSH-style leveled diagnostics, SFTP lexical tokenization and quote escaping, storage space pre-checks and large-file progress tracking, and refined SCP overwrite semantics, alongside bounded command execution with structured outcomes, per-call execution overrides, lazy shell probing, client authentication, and transfer isolation. go.mod/go.sum are authoritative; do not commit local replacements or workspaces.
 
 Nodes persist optional execution settings in SQLite v9 / PostgreSQL v6 and expose them through the management API and console. The adapter clones settings into each target and supplies `ports.ExecutionVersion` so a setting change invalidates old admissions. CLI import resolves global/node execution inheritance into each imported node. Runtime probes remain transient; they do not write inventory.
 
@@ -21,12 +21,12 @@ Production and tests import only upstream `core/*`. `internal/dependencycheck` c
 ## Independent consumer
 
 ```sh
-GOWORK=off python3 scripts/check_core_consumer.py --version v0.14.0
+GOWORK=off python3 scripts/check_core_consumer.py --version v0.15.1-0.20261029074656-7a52a01fbf14
 ```
 
 The script copies `internal/coreconsumer` into a temporary module, checks the fixed version without replacements and all three platform graphs, then runs build, race, lint and real local SSH/SFTP. `--upstream /path/to/xops-cli` is only a local preview, not evidence of a published version.
 
-On 2026-10-13, Linux/amd64 acceptance passed: fresh-cache `GOPROXY=direct` download with tag/commit and checksums verified; product build and lint; full SQLite/PostgreSQL race suites; independent consumer build/race/lint and three-platform dependency graphs; Web resource checks, browser regressions, and HTTP/HTTPS browser flows. Protocol fixtures do not establish native shell execution on deployed hosts or native Windows/macOS server acceptance.
+On 2026-10-29, Linux/amd64 acceptance passed: fresh-cache `GOPROXY=direct` download with tag/commit and checksums verified; product build and lint; full SQLite/PostgreSQL race suites; independent consumer build/race/lint and three-platform dependency graphs; Web resource checks, browser regressions, and HTTP/HTTPS browser flows. Protocol fixtures do not establish native shell execution on deployed hosts or native Windows/macOS server acceptance.
 
 ## Product validation
 

@@ -39,10 +39,10 @@ type Store interface {
 	storage.MCPTokenRepository
 }
 type Probes interface {
-	TestConnection(context.Context, ports.Permit, string) error
+	TestConnection(context.Context, ports.Permit, string) (*xops.ConnectionTestResult, error)
 	TestPrivilege(context.Context, ports.Permit, string) (*xops.PrivilegeTestResult, error)
 	ProbePrivilege(context.Context, ssh.ConnectionPlan, *ssh.ExecutionConfig, []storage.Source) (*xops.PrivilegeTestResult, error)
-	ProbeExecution(context.Context, ssh.ConnectionPlan, []storage.Source) (*ssh.ProbeResult, error)
+	ProbeExecution(context.Context, ssh.ConnectionPlan, []storage.Source) (*xops.ExecutionProbeResult, error)
 }
 type Options struct {
 	MCPTokens     *mcpauth.Manager
@@ -263,7 +263,14 @@ func respond(w http.ResponseWriter, status int, value any) {
 	}
 }
 func problem(w http.ResponseWriter, status int, code, message string) {
-	respond(w, status, map[string]string{"code": code, "message": localizedMessage(w, message)})
+	problemWithDiagnostics(w, status, code, message, nil)
+}
+func problemWithDiagnostics(w http.ResponseWriter, status int, code, message string, diagnostics []xops.DiagnosticEvent) {
+	body := map[string]any{"code": code, "message": localizedMessage(w, message)}
+	if len(diagnostics) > 0 {
+		body["diagnostics"] = diagnostics
+	}
+	respond(w, status, body)
 }
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 	if strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/json" {

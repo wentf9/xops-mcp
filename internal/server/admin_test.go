@@ -28,6 +28,7 @@ import (
 	"github.com/wentf9/xops-cli/core/mcp/ports"
 	mcpruntime "github.com/wentf9/xops-cli/core/mcp/runtime"
 	"github.com/wentf9/xops-cli/core/testutil/sshfixture"
+	"github.com/wentf9/xops-mcp/internal/adapters/xops"
 	"github.com/wentf9/xops-mcp/internal/config"
 	"github.com/wentf9/xops-mcp/internal/server"
 	"github.com/wentf9/xops-mcp/internal/service"
@@ -258,7 +259,18 @@ func TestWebAdministrationControlsLiveMCP(t *testing.T) {
 	p.request("POST", "/api/v1/hosts/"+hostID+"/trust", map[string]string{"probeID": observed.ProbeID}, 409, nil)
 	node.Disabled = false
 	p.request("PUT", "/api/v1/nodes/"+nodeID, node, 200, nil)
-	p.request("POST", "/api/v1/nodes/"+nodeID+"/test", map[string]any{}, 200, nil)
+	testResp := p.request("POST", "/api/v1/nodes/"+nodeID+"/test", map[string]any{}, 200, nil)
+	var testResult struct {
+		Connected   bool                   `json:"connected"`
+		ElapsedMS   int64                  `json:"elapsedMS"`
+		Diagnostics []xops.DiagnosticEvent `json:"diagnostics,omitempty"`
+	}
+	if err := json.Unmarshal(testResp, &testResult); err != nil {
+		t.Fatal(err)
+	}
+	if !testResult.Connected {
+		t.Fatalf("expected connected=true, got %+v", testResult)
+	}
 	if peer.Executed.Load() != 0 {
 		t.Fatal("connection test executed a command")
 	}

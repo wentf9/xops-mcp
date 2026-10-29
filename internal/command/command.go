@@ -20,6 +20,7 @@ import (
 	"time"
 
 	mcpruntime "github.com/wentf9/xops-cli/core/mcp/runtime"
+	"github.com/wentf9/xops-cli/core/ssh"
 	"github.com/wentf9/xops-mcp/internal/adminauth"
 	"github.com/wentf9/xops-mcp/internal/config"
 	"github.com/wentf9/xops-mcp/internal/importer"
@@ -54,6 +55,18 @@ CLI/OpenSSH configuration. See docs/user/README.md for deployment and import ins
 `
 
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) (retErr error) {
+	boundOut, closeOut, _, err := ssh.BindOutput(ctx, stdout)
+	if err != nil {
+		return err
+	}
+	defer func() { retErr = errors.Join(retErr, closeOut()) }()
+	boundErr, closeErr, _, err := ssh.BindOutput(ctx, stderr)
+	if err != nil {
+		return err
+	}
+	defer func() { retErr = errors.Join(retErr, closeErr()) }()
+	stdout, stderr = boundOut, boundErr
+
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
 		_, err := io.WriteString(stdout, help)
 		return err

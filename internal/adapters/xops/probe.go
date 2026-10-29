@@ -15,29 +15,47 @@ import (
 )
 
 type PrivilegeTestResult struct {
-	Escalated bool   `json:"escalated"`
-	SudoMode  string `json:"sudoMode"`
-	User      string `json:"user"`
-	Detail    string `json:"detail,omitempty"`
+	Escalated   bool              `json:"escalated"`
+	SudoMode    string            `json:"sudoMode"`
+	User        string            `json:"user"`
+	Detail      string            `json:"detail,omitempty"`
+	Diagnostics []DiagnosticEvent `json:"diagnostics,omitempty"`
 }
 
-func (m *Materials) TestConnection(ctx context.Context, permit ports.Permit, nodeID string) (retErr error) {
+type ConnectionTestResult struct {
+	Connected   bool              `json:"connected"`
+	ElapsedMS   int64             `json:"elapsedMS"`
+	Diagnostics []DiagnosticEvent `json:"diagnostics,omitempty"`
+}
+
+func (m *Materials) TestConnection(ctx context.Context, permit ports.Permit, nodeID string) (_ *ConnectionTestResult, retErr error) {
 	work, cancel, err := ports.WorkContext(ctx, permit, ports.Inspect)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer cancel()
 	_, target, err := permit.Snapshot().Resolve(nodeID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	connector := ssh.NewConnector(nil, ssh.WithSecretResolver(m), ssh.WithKeySource(m), ssh.WithHostKeyVerifier(m), ssh.WithHandshakeTimeout(5*time.Second))
+	collector := NewDiagnosticCollector()
+	connector := ssh.NewConnector(nil,
+		ssh.WithSecretResolver(m),
+		ssh.WithKeySource(m),
+		ssh.WithHostKeyVerifier(m),
+		ssh.WithHandshakeTimeout(5*time.Second),
+		ssh.WithDiagnostics(collector),
+	)
 	defer func() { retErr = errors.Join(retErr, connector.CloseAll()) }()
 	connection, err := connector.ConnectPlan(work, target.Plan)
-	if err != nil {
-		return fmt.Errorf("SSH connection test failed: %w", err)
+	res := &ConnectionTestResult{
+		Diagnostics: collector.Events(),
 	}
-	return connection.Close()
+	if err != nil {
+		return res, fmt.Errorf("SSH connection test failed: %w", err)
+	}
+	res.Connected = true
+	return res, connection.Close()
 }
 
 func (m *Materials) TestPrivilege(ctx context.Context, permit ports.Permit, nodeID string) (_ *PrivilegeTestResult, retErr error) {
@@ -56,22 +74,35 @@ func (m *Materials) TestPrivilege(ctx context.Context, permit ports.Permit, node
 func (m *Materials) ProbePrivilege(ctx context.Context, plan ssh.ConnectionPlan, execution *ssh.ExecutionConfig, sources []storage.Source) (_ *PrivilegeTestResult, retErr error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	collector := NewDiagnosticCollector()
 	var connector *ssh.Connector
 	if len(sources) > 0 {
 		draft := &Materials{Store: probeSources{Repository: m.Store, sources: sources}, Vault: m.Vault, DomainID: m.DomainID}
-		connector = ssh.NewConnector(nil, ssh.WithSecretResolver(draft), ssh.WithKeySource(draft), ssh.WithHostKeyVerifier(draft), ssh.WithHandshakeTimeout(5*time.Second))
+		connector = ssh.NewConnector(nil,
+			ssh.WithSecretResolver(draft),
+			ssh.WithKeySource(draft),
+			ssh.WithHostKeyVerifier(draft),
+			ssh.WithHandshakeTimeout(5*time.Second),
+			ssh.WithDiagnostics(collector),
+		)
 	} else {
-		connector = ssh.NewConnector(nil, ssh.WithSecretResolver(m), ssh.WithKeySource(m), ssh.WithHostKeyVerifier(m), ssh.WithHandshakeTimeout(5*time.Second))
+		connector = ssh.NewConnector(nil,
+			ssh.WithSecretResolver(m),
+			ssh.WithKeySource(m),
+			ssh.WithHostKeyVerifier(m),
+			ssh.WithHandshakeTimeout(5*time.Second),
+			ssh.WithDiagnostics(collector),
+		)
 	}
 	defer func() { retErr = errors.Join(retErr, connector.CloseAll()) }()
 	connection, err := connector.ConnectPlan(ctx, plan)
 	if err != nil {
-		return nil, fmt.Errorf("SSH connection failed: %w", err)
+		return &PrivilegeTestResult{Diagnostics: collector.Events()}, fmt.Errorf("SSH connection failed: %w", err)
 	}
 	defer func() { retErr = errors.Join(retErr, connection.Close()) }()
 
 	if len(plan.Hops) == 0 {
-		return nil, errors.New("empty connection hops")
+		return &PrivilegeTestResult{Diagnostics: collector.Events()}, errors.New("empty connection hops")
 	}
 	targetHop := plan.Hops[len(plan.Hops)-1]
 	mode := targetHop.SudoMode
@@ -79,7 +110,7 @@ func (m *Materials) ProbePrivilege(ctx context.Context, plan ssh.ConnectionPlan,
 	// identity command runs; keep explicit settings and the stored node intact.
 	execution, err = connection.Client.ProbeControlledExecution(ctx, execution)
 	if err != nil {
-		return nil, fmt.Errorf("探测提权执行环境失败: %w", err)
+		return &PrivilegeTestResult{Diagnostics: collector.Events()}, fmt.Errorf("探测提权执行环境失败: %w", err)
 	}
 
 	if mode == "" || mode == ssh.SudoModeNone {
@@ -95,48 +126,51 @@ func (m *Materials) ProbePrivilege(ctx context.Context, plan ssh.ConnectionPlan,
 		}
 		out, err := run("id -u && id -un")
 		if err != nil {
-			return nil, fmt.Errorf("执行登录身份检查失败: %w", err)
+			return &PrivilegeTestResult{Diagnostics: collector.Events()}, fmt.Errorf("执行登录身份检查失败: %w", err)
 		}
 		if user, err := privilegeRootUser(out); err == nil {
 			return &PrivilegeTestResult{
-				Escalated: true,
-				SudoMode:  "root",
-				User:      user,
-				Detail:    "当前登录身份即为 root 用户",
+				Escalated:   true,
+				SudoMode:    "root",
+				User:        user,
+				Detail:      "当前登录身份即为 root 用户",
+				Diagnostics: collector.Events(),
 			}, nil
 		}
 
 		out, err = run("sudo -n id -u && sudo -n id -un")
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, ctxErr
+				return &PrivilegeTestResult{Diagnostics: collector.Events()}, ctxErr
 			}
-			return nil, errors.New("节点未配置提权方式（当前为 none）且无法验证免密 root 提权权限")
+			return &PrivilegeTestResult{Diagnostics: collector.Events()}, errors.New("节点未配置提权方式（当前为 none）且无法验证免密 root 提权权限")
 		}
 		user, err := privilegeRootUser(out)
 		if err != nil {
-			return nil, err
+			return &PrivilegeTestResult{Diagnostics: collector.Events()}, err
 		}
 		return &PrivilegeTestResult{
-			Escalated: true,
-			SudoMode:  "sudoer",
-			User:      user,
-			Detail:    "远端具备免密 sudo (sudoer) 权限，建议在配置中开启",
+			Escalated:   true,
+			SudoMode:    "sudoer",
+			User:        user,
+			Detail:      "远端具备免密 sudo (sudoer) 权限，建议在配置中开启",
+			Diagnostics: collector.Events(),
 		}, nil
 	}
 
 	out, err := connection.Client.RunWithSudoExecution(ctx, "id -u && id -un", execution)
 	if err != nil {
-		return nil, fmt.Errorf("提权执行失败: %w", err)
+		return &PrivilegeTestResult{Diagnostics: collector.Events()}, fmt.Errorf("提权执行失败: %w", err)
 	}
 	user, err := privilegeRootUser(out)
 	if err != nil {
-		return nil, err
+		return &PrivilegeTestResult{Diagnostics: collector.Events()}, err
 	}
 	return &PrivilegeTestResult{
-		Escalated: true,
-		SudoMode:  string(mode),
-		User:      user,
+		Escalated:   true,
+		SudoMode:    string(mode),
+		User:        user,
+		Diagnostics: collector.Events(),
 	}, nil
 }
 

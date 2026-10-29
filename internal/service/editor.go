@@ -48,6 +48,7 @@ type NodeInput struct {
 	Disabled              bool                 `json:"disabled"`
 	SudoMode              string               `json:"sudoMode"`
 	PrivilegeCredentialID string               `json:"privilegeCredentialID"`
+	PasswordPromptPattern string               `json:"passwordPromptPattern,omitempty"`
 }
 
 // MaterialInput is write-only. Public credential DTOs contain metadata only.
@@ -206,7 +207,7 @@ func (e *Editor) SaveNode(ctx context.Context, rev uint64, id string, in NodeInp
 		aliases := slices.Clone(in.Aliases)
 		slices.Sort(aliases)
 		aliases = slices.Compact(aliases)
-		v.Nodes[id] = storage.Node{ID: id, Name: in.Name, HostID: in.HostID, IdentityID: in.IdentityID, JumpIDs: slices.Clone(in.JumpIDs), Aliases: aliases, TagIDs: cleanList(in.TagIDs), Disabled: in.Disabled, SudoMode: in.SudoMode, PrivilegeCredentialID: in.PrivilegeCredentialID, Execution: in.Execution.Clone()}
+		v.Nodes[id] = storage.Node{ID: id, Name: in.Name, HostID: in.HostID, IdentityID: in.IdentityID, JumpIDs: slices.Clone(in.JumpIDs), Aliases: aliases, TagIDs: cleanList(in.TagIDs), Disabled: in.Disabled, SudoMode: in.SudoMode, PrivilegeCredentialID: in.PrivilegeCredentialID, PasswordPromptPattern: in.PasswordPromptPattern, Execution: in.Execution.Clone()}
 		return nil
 	})
 }
